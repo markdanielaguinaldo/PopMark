@@ -11,6 +11,8 @@ public sealed class PlaybackQueue
     private Track? _current;
     private PlaybackStatus _status = PlaybackStatus.Stopped;
 
+    public event Action<PlayerSnapshot>? SnapshotChanged;
+
     public PlaybackQueue(YtDlpService ytDlp, MpvPlayer mpv)
     {
         _ytDlp = ytDlp;
@@ -46,6 +48,30 @@ public sealed class PlaybackQueue
             : $"Added {tracks.Count} tracks.";
 
         await StartNextIfIdleAsync(cancellationToken);
+        NotifySnapshotChanged();
+    }
+
+    public void RestoreQueue(PlayerSnapshot snapshot)
+    {
+        lock (_syncRoot)
+        {
+            _pending.Clear();
+            _current = snapshot.Current;
+            _status = PlaybackStatus.Stopped;
+
+            if (_current is not null)
+                _pending.Enqueue(_current);
+
+            foreach (var track in snapshot.Pending)
+                _pending.Enqueue(track);
+
+            _current = null;
+        }
+
+        LastMessage = snapshot.Current is null && snapshot.Pending.Count == 0
+            ? "Ready."
+            : $"Restored {snapshot.Pending.Count + (snapshot.Current is null ? 0 : 1)} cached track(s).";
+        NotifySnapshotChanged();
     }
 
     public async Task PauseAsync(CancellationToken cancellationToken = default)
@@ -76,6 +102,18 @@ public sealed class PlaybackQueue
 
     public async Task TogglePauseAsync(CancellationToken cancellationToken = default)
     {
+        var shouldStart = false;
+        lock (_syncRoot)
+        {
+            shouldStart = _current is null && _pending.Count > 0;
+        }
+
+        if (shouldStart)
+        {
+            await NextAsync(cancellationToken);
+            return;
+        }
+
         if (!HasCurrentTrack())
         {
             LastMessage = "Nothing is playing.";
@@ -88,6 +126,7 @@ public sealed class PlaybackQueue
             _status = _status == PlaybackStatus.Paused ? PlaybackStatus.Playing : PlaybackStatus.Paused;
             LastMessage = _status == PlaybackStatus.Paused ? "Playback paused." : "Playback resumed.";
         }
+        NotifySnapshotChanged();
     }
 
     public async Task NextAsync(CancellationToken cancellationToken = default)
@@ -117,6 +156,7 @@ public sealed class PlaybackQueue
 
         await _mpv.PlayAsync(next, cancellationToken);
         LastMessage = $"Now playing: {next.Title}";
+        NotifySnapshotChanged();
     }
 
     public async Task StopAsync(bool clearQueue, CancellationToken cancellationToken = default)
@@ -131,6 +171,7 @@ public sealed class PlaybackQueue
 
         await _mpv.StopAsync(cancellationToken);
         LastMessage = clearQueue ? "Stopped playback and cleared queue." : "Stopped playback.";
+        NotifySnapshotChanged();
     }
 
     public async Task DetachAsync(CancellationToken cancellationToken = default)
@@ -154,6 +195,7 @@ public sealed class PlaybackQueue
         LastMessage = tracksToAppend.Count == 0
             ? "Detached. mpv will continue the current track."
             : $"Detached. mpv owns the remaining {tracksToAppend.Count} queued track(s).";
+        NotifySnapshotChanged();
     }
 
     public PlayerSnapshot CreateSnapshot()
@@ -200,6 +242,7 @@ public sealed class PlaybackQueue
                 LastMessage = "Queue finished.";
             }
         }
+        NotifySnapshotChanged();
 
         if (next is null)
             return;
@@ -208,6 +251,7 @@ public sealed class PlaybackQueue
         {
             await _mpv.PlayAsync(next);
             LastMessage = $"Now playing: {next.Title}";
+            NotifySnapshotChanged();
         }
         catch (Exception ex)
         {
@@ -230,5 +274,8 @@ public sealed class PlaybackQueue
         {
             _status = status;
         }
+        NotifySnapshotChanged();
     }
+
+    private void NotifySnapshotChanged() => SnapshotChanged?.Invoke(CreateSnapshot());
 }

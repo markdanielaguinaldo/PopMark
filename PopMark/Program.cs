@@ -104,7 +104,6 @@ internal static class Program
                     if (showHelp && miniMode)
                     {
                         miniMode = false;
-                        ConsoleHelper.ConfigureMiniModeWindow(false);
                     }
 
                     keepRunning = !await ProcessCommandAsync(
@@ -115,8 +114,7 @@ internal static class Program
                         () =>
                         {
                             miniMode = !miniMode;
-                            ConsoleHelper.ConfigureMiniModeWindow(miniMode);
-                            player.LastMessage = miniMode ? "Mini mode enabled." : "Full player view enabled.";
+                            player.LastMessage = miniMode ? "Compact view enabled." : "Full player view enabled.";
                         });
                     notice = player.LastMessage;
                     (lastWidth, lastHeight) = ConsoleHelper.GetWindowSize();
@@ -137,7 +135,6 @@ internal static class Program
         }
         finally
         {
-            ConsoleHelper.ConfigureMiniModeWindow(false);
             ConsoleHelper.ResetCursorStyle();
         }
     }

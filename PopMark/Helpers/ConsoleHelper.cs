@@ -2,7 +2,6 @@ using PopMark.Models;
 using Spectre.Console;
 using Spectre.Console.Rendering;
 using System.Runtime.InteropServices;
-using System.Runtime.Versioning;
 using System.Text;
 
 namespace PopMark.Helpers;
@@ -11,29 +10,14 @@ public static class ConsoleHelper
 {
     private const int StdOutputHandle = -11;
     private const uint EnableVirtualTerminalProcessing = 0x0004;
-    private const int SwpNoZOrder = 0x0004;
-    private const int SwpNoActivate = 0x0010;
-    private const int MonitorDefaultToNearest = 0x00000002;
     private const int MiniWidgetWidth = 46;
     private const int MiniWidgetHeight = 9;
-    private const int MiniConsoleColumns = 52;
-    private const int MiniConsoleRows = 13;
     private const string Accent = "deepskyblue1";
     private const string Secondary = "lightskyblue1";
     private const string SuccessColor = "cyan1";
     private const string Muted = "grey70";
     private const string Chrome = "grey35";
     private const string PanelBorder = "steelblue1";
-    private const string AnsiReset = "\u001b[0m";
-    private const string AnsiAccent = "\u001b[38;2;0;191;255m";
-    private const string AnsiSecondary = "\u001b[38;2;135;206;250m";
-    private const string AnsiSuccess = "\u001b[38;2;0;255;255m";
-    private const string AnsiMuted = "\u001b[38;2;176;183;195m";
-    private const string AnsiBorder = "\u001b[38;2;95;168;211m";
-    private const string AnsiWhite = "\u001b[37m";
-    private static ConsoleWindowState? _savedWindowState;
-    private static int? _miniSpinnerLeft;
-    private static int? _miniSpinnerTop;
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern nint GetStdHandle(int nStdHandle);
@@ -43,21 +27,6 @@ public static class ConsoleHelper
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool SetConsoleMode(nint hConsoleHandle, uint dwMode);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern nint GetConsoleWindow();
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool GetWindowRect(nint hWnd, out Rect lpRect);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool SetWindowPos(nint hWnd, nint hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern nint MonitorFromWindow(nint hwnd, uint dwFlags);
-
-    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
-    private static extern bool GetMonitorInfo(nint hMonitor, ref MonitorInfo lpmi);
 
     public static void InitializeTerminalCapabilities()
     {
@@ -142,59 +111,26 @@ public static class ConsoleHelper
         var track = snapshot.Current?.Title
             ?? snapshot.Pending.FirstOrDefault()?.Title
             ?? "Queue is empty";
-        var (windowWidth, windowHeight) = GetWindowSize();
-        if (windowWidth <= 0 || windowHeight <= 0)
-            return;
-
-        var widgetWidth = Math.Min(MiniWidgetWidth, Math.Max(24, windowWidth));
-        var innerWidth = widgetWidth - 2;
-        var left = Math.Max(0, windowWidth - widgetWidth);
+        var (_, windowHeight) = GetWindowSize();
         var topPadding = Math.Max(0, windowHeight - MiniWidgetHeight - 2);
-        var textWidth = Math.Max(8, innerWidth - 4);
+        var textWidth = MiniWidgetWidth - 10;
+        if (!Console.IsOutputRedirected && topPadding > 0)
+            Console.Write(new string('\n', topPadding));
 
-        try
-        {
-            DrawMiniBorderLine(left, topPadding, widgetWidth, top: true);
-            DrawMiniTextLine(left, topPadding + 1, innerWidth, "PopMark // mini", AnsiAccent, center: true);
-            DrawMiniStatusLine(left, topPadding + 2, innerWidth, snapshot.Status);
-            DrawMiniTextLine(left, topPadding + 3, innerWidth, TrimForWidget(track, textWidth), AnsiWhite, center: true);
-            DrawMiniTextLine(left, topPadding + 4, innerWidth, TrimForWidget(notice, textWidth), AnsiMuted, center: true);
-            DrawMiniTextLine(left, topPadding + 5, innerWidth, "Type help for commands", AnsiMuted, center: true);
-            DrawMiniBorderLine(left, topPadding + 6, widgetWidth, top: false);
+        var body = new Rows(
+            Align.Center(new Markup($"[bold {Accent}]PopMark[/] [dim {Secondary}]// compact[/]")),
+            Align.Center(new Markup(MiniStatusMarkup(snapshot.Status))),
+            Align.Center(new Markup($"[white]{Markup.Escape(TrimForWidget(track, textWidth))}[/]")),
+            Align.Center(new Markup($"[{Muted}]{Markup.Escape(TrimForWidget(notice, textWidth))}[/]")),
+            Align.Center(new Markup($"[{Muted}]Type [{Accent}]help[/] for commands[/]")));
 
-            Console.SetCursorPosition(0, Math.Min(windowHeight - 1, topPadding + MiniWidgetHeight - 1));
-        }
-        catch
-        {
-            _miniSpinnerLeft = null;
-            _miniSpinnerTop = null;
-        }
-    }
+        var panel = new Panel(body)
+            .Border(BoxBorder.Rounded)
+            .BorderStyle(Style.Parse(PanelBorder))
+            .Header($"[bold {Secondary}]Compact[/]", Justify.Right)
+            .Padding(1, 0);
 
-    public static void ConfigureMiniModeWindow(bool enabled)
-    {
-        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows) || Console.IsOutputRedirected)
-            return;
-
-        try
-        {
-            if (enabled)
-            {
-                _savedWindowState ??= CaptureConsoleWindowState();
-                TrySetConsoleSize(MiniConsoleColumns, MiniConsoleRows);
-                TryDockConsoleWindow(MiniConsoleColumns, MiniConsoleRows);
-                return;
-            }
-
-            if (_savedWindowState is not null)
-            {
-                RestoreConsoleWindowState(_savedWindowState.Value);
-                _savedWindowState = null;
-            }
-        }
-        catch
-        {
-        }
+        AnsiConsole.Write(Align.Right(panel));
     }
 
     public static string ReadReactiveInput(
@@ -226,14 +162,6 @@ public static class ConsoleHelper
             RenderPrompt(buffer.ToString());
         }
 
-        void RefreshMiniSpinner()
-        {
-            if (miniModeProvider?.Invoke() != true)
-                return;
-
-            UpdateMiniSpinner();
-        }
-
         void RedrawInputLine()
         {
             Console.Write("\r");
@@ -262,10 +190,6 @@ public static class ConsoleHelper
                     {
                         lastScreenSignature = screenSignature;
                         RefreshScreen();
-                    }
-                    else
-                    {
-                        RefreshMiniSpinner();
                     }
                 }
 
@@ -436,21 +360,18 @@ public static class ConsoleHelper
 
     private static IRenderable BuildPlayerHeader(PlayerSnapshot snapshot)
     {
-        var title = new FigletText("PopMark")
-            .Centered()
-            .Color(Color.DeepSkyBlue1);
+        var grid = new Grid()
+            .Expand()
+            .AddColumn()
+            .AddColumn(new GridColumn().RightAligned());
 
-        var spinner = snapshot.Status switch
-        {
-            PlaybackStatus.Playing => $"[{SuccessColor}]Playing[/]",
-            PlaybackStatus.Paused => $"[{Accent}]Paused[/]",
-            PlaybackStatus.Loading => $"[{Secondary}]Loading[/]",
-            _ => $"[{Muted}]Idle[/]"
-        };
+        grid.AddRow(
+            $"[bold {Accent}]PopMark[/] [{Muted}]command center[/]",
+            $"{StatusMarkup(snapshot.Status)} [{Muted}]queue:[/] [white]{snapshot.Pending.Count}[/]");
 
-        return new Rows(
-            title,
-            Align.Center(new Markup($"{spinner} [{Muted}]queue:[/] [white]{snapshot.Pending.Count}[/]")));
+        return new Panel(grid)
+            .Border(BoxBorder.None)
+            .Padding(0, 0, 0, 0);
     }
 
     private static IRenderable BuildNowPlayingPanel(PlayerSnapshot snapshot, string notice)
@@ -537,23 +458,12 @@ public static class ConsoleHelper
     private static string MiniStatusMarkup(PlaybackStatus status) =>
         status switch
         {
-            PlaybackStatus.Playing => $"{SpinnerFrame()} [white]Playing[/]",
-            PlaybackStatus.Loading => $"{SpinnerFrame()} [white]Loading[/]",
-            PlaybackStatus.Paused => $"{SpinnerFrame()} [{Accent}]Paused[/]",
-            PlaybackStatus.Detached => $"{SpinnerFrame()} [{Secondary}]Detached[/]",
-            _ => $"{SpinnerFrame()} [{Muted}]Stopped[/]"
+            PlaybackStatus.Playing => $"[{SuccessColor}]Playing[/]",
+            PlaybackStatus.Loading => $"[{Secondary}]Loading[/]",
+            PlaybackStatus.Paused => $"[{Accent}]Paused[/]",
+            PlaybackStatus.Detached => $"[{Secondary}]Detached[/]",
+            _ => $"[{Muted}]Stopped[/]"
         };
-
-    private static string SpinnerFrame()
-    {
-        return $"[{SuccessColor}]{SpinnerFrameRaw()}[/]";
-    }
-
-    private static string SpinnerFrameRaw()
-    {
-        var frames = new[] { "|", "/", "-", "\\" };
-        return frames[(Environment.TickCount64 / 180) % frames.Length];
-    }
 
     private static string ActivityMarkup(PlaybackStatus status) =>
         status switch
@@ -623,88 +533,6 @@ public static class ConsoleHelper
             return value;
 
         return maxLength <= 3 ? value[..maxLength] : $"{value[..(maxLength - 3)]}...";
-    }
-
-    private static void UpdateMiniSpinner()
-    {
-        if (Console.IsOutputRedirected || _miniSpinnerLeft is null || _miniSpinnerTop is null)
-            return;
-
-        try
-        {
-            var currentLeft = Console.CursorLeft;
-            var currentTop = Console.CursorTop;
-            Console.SetCursorPosition(_miniSpinnerLeft.Value, _miniSpinnerTop.Value);
-            Console.Write($"{AnsiSuccess}{SpinnerFrameRaw()}{AnsiReset}");
-            Console.SetCursorPosition(currentLeft, currentTop);
-        }
-        catch
-        {
-            _miniSpinnerLeft = null;
-            _miniSpinnerTop = null;
-        }
-    }
-
-    private static void DrawMiniBorderLine(int left, int row, int width, bool isTop)
-    {
-        Console.SetCursorPosition(left, row);
-        var leftCorner = isTop ? "╭" : "╰";
-        var rightCorner = isTop ? "╮" : "╯";
-        Console.Write($"{AnsiBorder}{leftCorner}{new string('─', width - 2)}{rightCorner}{AnsiReset}");
-    }
-
-    private static void DrawMiniTextLine(int left, int top, int innerWidth, string text, string color, bool center)
-    {
-        var content = center ? CenterText(text, innerWidth) : text.PadRight(innerWidth);
-        if (content.Length > innerWidth)
-            content = content[..innerWidth];
-
-        Console.SetCursorPosition(left, top);
-        Console.Write($"{AnsiBorder}│{AnsiReset}{color}{content}{AnsiReset}{AnsiBorder}│{AnsiReset}");
-    }
-
-    private static void DrawMiniStatusLine(int left, int top, int innerWidth, PlaybackStatus status)
-    {
-        var label = MiniStatusLabel(status);
-        var textLength = label.Length + 2;
-        var padding = Math.Max(0, (innerWidth - textLength) / 2);
-        var trailing = Math.Max(0, innerWidth - padding - textLength);
-        var labelColor = status switch
-        {
-            PlaybackStatus.Playing => AnsiSuccess,
-            PlaybackStatus.Loading => AnsiSecondary,
-            PlaybackStatus.Paused => AnsiAccent,
-            PlaybackStatus.Detached => AnsiSecondary,
-            _ => AnsiMuted
-        };
-
-        Console.SetCursorPosition(left, top);
-        Console.Write($"{AnsiBorder}│{AnsiReset}");
-        Console.Write(new string(' ', padding));
-        _miniSpinnerLeft = left + 1 + padding;
-        _miniSpinnerTop = top;
-        Console.Write($"{AnsiSuccess}{SpinnerFrameRaw()}{AnsiReset} {labelColor}{label}{AnsiReset}");
-        Console.Write(new string(' ', trailing));
-        Console.Write($"{AnsiBorder}│{AnsiReset}");
-    }
-
-    private static string MiniStatusLabel(PlaybackStatus status) =>
-        status switch
-        {
-            PlaybackStatus.Playing => "Playing",
-            PlaybackStatus.Loading => "Loading",
-            PlaybackStatus.Paused => "Paused",
-            PlaybackStatus.Detached => "Detached",
-            _ => "Stopped"
-        };
-
-    private static string CenterText(string text, int width)
-    {
-        if (text.Length >= width)
-            return text[..width];
-
-        var leftPadding = (width - text.Length) / 2;
-        return new string(' ', leftPadding) + text + new string(' ', width - text.Length - leftPadding);
     }
 
     private static IRenderable CreateSplashFrame(int frame)
@@ -856,79 +684,6 @@ public static class ConsoleHelper
         canvas.SetPixel(x, y, color);
     }
 
-    [SupportedOSPlatform("windows")]
-    private static ConsoleWindowState? CaptureConsoleWindowState()
-    {
-        var handle = GetConsoleWindow();
-        if (handle == 0 || !GetWindowRect(handle, out var rect))
-            return null;
-
-        return new ConsoleWindowState(
-            handle,
-            rect,
-            Console.WindowWidth,
-            Console.WindowHeight,
-            Console.BufferWidth,
-            Console.BufferHeight);
-    }
-
-    [SupportedOSPlatform("windows")]
-    private static void RestoreConsoleWindowState(ConsoleWindowState state)
-    {
-        TrySetConsoleSize(state.WindowColumns, state.WindowRows, state.BufferColumns, state.BufferRows);
-        var width = Math.Max(1, state.WindowRect.Right - state.WindowRect.Left);
-        var height = Math.Max(1, state.WindowRect.Bottom - state.WindowRect.Top);
-        _ = SetWindowPos(
-            state.Handle,
-            0,
-            state.WindowRect.Left,
-            state.WindowRect.Top,
-            width,
-            height,
-            SwpNoZOrder | SwpNoActivate);
-    }
-
-    [SupportedOSPlatform("windows")]
-    private static void TrySetConsoleSize(int columns, int rows, int? bufferColumns = null, int? bufferRows = null)
-    {
-        try
-        {
-            columns = Math.Clamp(columns, 20, Console.LargestWindowWidth);
-            rows = Math.Clamp(rows, 8, Console.LargestWindowHeight);
-            Console.SetBufferSize(Math.Max(bufferColumns ?? columns, columns), Math.Max(bufferRows ?? rows, rows));
-            Console.SetWindowSize(columns, rows);
-        }
-        catch
-        {
-        }
-    }
-
-    [SupportedOSPlatform("windows")]
-    private static void TryDockConsoleWindow(int columns, int rows)
-    {
-        var handle = GetConsoleWindow();
-        if (handle == 0 || !GetWindowRect(handle, out var currentRect))
-            return;
-
-        var monitor = MonitorFromWindow(handle, MonitorDefaultToNearest);
-        var monitorInfo = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
-        if (monitor == 0 || !GetMonitorInfo(monitor, ref monitorInfo))
-            return;
-
-        var currentWidth = Math.Max(1, currentRect.Right - currentRect.Left);
-        var currentHeight = Math.Max(1, currentRect.Bottom - currentRect.Top);
-        var currentColumns = Math.Max(1, Console.WindowWidth);
-        var currentRows = Math.Max(1, Console.WindowHeight);
-        var width = Math.Max(360, (int)Math.Round(currentWidth * (columns / (double)currentColumns)));
-        var height = Math.Max(190, (int)Math.Round(currentHeight * (rows / (double)currentRows)));
-        var workArea = monitorInfo.WorkArea;
-        var margin = 18;
-        var x = workArea.Right - width - margin;
-        var y = workArea.Bottom - height - margin;
-
-        _ = SetWindowPos(handle, 0, x, y, width, height, SwpNoZOrder | SwpNoActivate);
-    }
-
     private static void TryClear()
     {
         try
@@ -947,29 +702,4 @@ public static class ConsoleHelper
         }
     }
 
-    [StructLayout(LayoutKind.Sequential)]
-    private readonly struct Rect
-    {
-        public readonly int Left;
-        public readonly int Top;
-        public readonly int Right;
-        public readonly int Bottom;
-    }
-
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
-    private struct MonitorInfo
-    {
-        public int Size;
-        public Rect Monitor;
-        public Rect WorkArea;
-        public uint Flags;
-    }
-
-    private readonly record struct ConsoleWindowState(
-        nint Handle,
-        Rect WindowRect,
-        int WindowColumns,
-        int WindowRows,
-        int BufferColumns,
-        int BufferRows);
 }

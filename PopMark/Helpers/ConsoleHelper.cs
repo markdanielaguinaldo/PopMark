@@ -18,6 +18,7 @@ public static class ConsoleHelper
     private const string Muted = "grey70";
     private const string Chrome = "grey35";
     private const string PanelBorder = "steelblue1";
+    private static readonly string[] VisualizerBars = ["▁", "▂", "▃", "▄", "▅", "▆", "▇"];
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern nint GetStdHandle(int nStdHandle);
@@ -91,17 +92,14 @@ public static class ConsoleHelper
     {
         TryClear();
 
-        AnsiConsole.Write(BuildPlayerHeader(snapshot));
+        AnsiConsole.Write(BuildTopBar(snapshot));
         AnsiConsole.WriteLine();
-        AnsiConsole.Write(BuildNowPlayingPanel(snapshot, notice));
-        AnsiConsole.WriteLine();
-        AnsiConsole.Write(BuildQueueTable(snapshot));
+        AnsiConsole.Write(BuildCommandCenterBody(snapshot, notice));
         AnsiConsole.WriteLine();
         if (showHelp)
             AnsiConsole.Write(BuildHelpTable());
         else
-            AnsiConsole.Write(Align.Center(new Markup($"[{Muted}]Type [{Accent}]help[/] to see commands.[/]")));
-        AnsiConsole.Write(new Rule().RuleStyle("grey"));
+            AnsiConsole.Write(BuildPromptSuggestions());
     }
 
     public static void DrawMiniPlayer(PlayerSnapshot snapshot, string notice)
@@ -358,7 +356,7 @@ public static class ConsoleHelper
     public static void Error(string message) =>
         AnsiConsole.MarkupLine($"[red][[ERR]][/] {Markup.Escape(message)}");
 
-    private static IRenderable BuildPlayerHeader(PlayerSnapshot snapshot)
+    private static IRenderable BuildTopBar(PlayerSnapshot snapshot)
     {
         var grid = new Grid()
             .Expand()
@@ -366,64 +364,84 @@ public static class ConsoleHelper
             .AddColumn(new GridColumn().RightAligned());
 
         grid.AddRow(
-            $"[bold {Accent}]PopMark[/] [{Muted}]command center[/]",
-            $"{StatusMarkup(snapshot.Status)} [{Muted}]queue:[/] [white]{snapshot.Pending.Count}[/]");
+            $"[bold {Accent}]PopMark[/] [{Muted}]music daemon[/] [grey35]//[/] [{Secondary}]terminal session[/]",
+            $"{StatusMarkup(snapshot.Status)} [{Chrome}]|[/] [{Muted}]queue[/] [white]{snapshot.Pending.Count}[/]");
 
         return new Panel(grid)
             .Border(BoxBorder.None)
             .Padding(0, 0, 0, 0);
     }
 
-    private static IRenderable BuildNowPlayingPanel(PlayerSnapshot snapshot, string notice)
+    private static IRenderable BuildCommandCenterBody(PlayerSnapshot snapshot, string notice)
     {
-        var grid = new Grid()
-            .AddColumn(new GridColumn().Width(16))
-            .AddColumn();
+        var width = GetWindowSize().Width;
+        if (width >= 108)
+        {
+            return new Columns(
+                BuildNowPlayingCard(snapshot, notice),
+                BuildQueuePanel(snapshot))
+                .Expand();
+        }
 
-        grid.AddRow($"[{Muted}]State[/]", StatusMarkup(snapshot.Status));
-        grid.AddRow($"[{Muted}]Track[/]", snapshot.Current is null
-            ? $"[{Muted}]Drop in a link with add <url>[/]"
-            : $"[bold white]{Markup.Escape(snapshot.Current.Title)}[/]");
-        grid.AddRow($"[{Muted}]Activity[/]", ActivityMarkup(snapshot.Status));
-        grid.AddRow($"[{Muted}]Message[/]", $"[silver]{Markup.Escape(notice)}[/]");
-        grid.AddRow($"[{Muted}]Hint[/]", $"Type [{Accent}]help[/] to see commands.");
+        return new Rows(
+            BuildNowPlayingCard(snapshot, notice),
+            BuildQueuePanel(snapshot));
+    }
 
-        return new Panel(grid)
-            .Border(BoxBorder.Double)
+    private static IRenderable BuildNowPlayingCard(PlayerSnapshot snapshot, string notice)
+    {
+        var title = snapshot.Current?.Title
+            ?? snapshot.Pending.FirstOrDefault()?.Title
+            ?? "Nothing loaded";
+
+        var source = snapshot.Current?.DisplaySource
+            ?? snapshot.Pending.FirstOrDefault()?.DisplaySource
+            ?? "add <url>";
+
+        var titleMarkup = snapshot.Current is null && snapshot.Pending.Count == 0
+            ? $"[{Muted}]Drop in a link to start[/]"
+            : $"[bold white]{Markup.Escape(title)}[/]";
+
+        var rows = new Rows(
+            new Markup($"[{Muted}]NOW PLAYING[/]"),
+            new Markup(titleMarkup),
+            new Markup($"[{Muted}]{Markup.Escape(source)}[/]"),
+            new Text(""),
+            new Markup(BuildVisualizer(snapshot.Status)),
+            new Markup($"[{Muted}]{Markup.Escape(TrimForWidget(notice, 92))}[/]"));
+
+        return new Panel(rows)
+            .Border(BoxBorder.Rounded)
             .BorderStyle(Style.Parse(PanelBorder))
-            .Header($"[bold {Accent}]Now Playing[/]")
+            .Padding(2, 1)
             .Expand();
     }
 
-    private static IRenderable BuildQueueTable(PlayerSnapshot snapshot)
+    private static IRenderable BuildQueuePanel(PlayerSnapshot snapshot)
     {
-        var table = new Table()
-            .RoundedBorder()
-            .BorderColor(Color.DeepSkyBlue1)
-            .Expand()
-            .AddColumn(new TableColumn($"[bold {Accent}]#[/]").Width(5))
-            .AddColumn(new TableColumn($"[bold {Secondary}]Track[/]"))
-            .AddColumn(new TableColumn($"[bold {Accent}]Source[/]"));
-
-        if (snapshot.Current is not null)
+        var rows = new List<IRenderable>
         {
-            table.AddRow($"[bold {SuccessColor}]now[/]", Markup.Escape(snapshot.Current.Title), $"[{SuccessColor}]playing[/]");
-        }
+            new Markup($"[{Muted}]UP NEXT[/]")
+        };
 
         var index = 1;
-        foreach (var track in snapshot.Pending.Take(12))
+        foreach (var track in snapshot.Pending.Take(6))
         {
-            table.AddRow(index.ToString(), Markup.Escape(track.Title), Markup.Escape(track.DisplaySource));
+            rows.Add(new Markup(
+                $"[{Accent}]{index,2}[/] [white]{Markup.Escape(TrimForWidget(track.Title, 46))}[/] [{Muted}]{Markup.Escape(TrimForWidget(track.DisplaySource, 20))}[/]"));
             index++;
         }
 
-        if (snapshot.Current is null && snapshot.Pending.Count == 0)
-            table.AddRow($"[{Muted}]-[/]", $"[{Muted}]Queue is empty[/]", $"[{Muted}]add <url>[/]");
+        if (snapshot.Pending.Count == 0)
+            rows.Add(new Markup($"[{Muted}]Queue is empty. Paste a YouTube URL or type [{Accent}]add <url>[/].[/]"));
 
-        if (snapshot.Pending.Count > 12)
-            table.AddRow($"[{Muted}]...[/]", $"[{Muted}]{snapshot.Pending.Count - 12} more track(s)[/]", $"[{Muted}]hidden[/]");
+        if (snapshot.Pending.Count > 6)
+            rows.Add(new Markup($"[{Muted}]+ {snapshot.Pending.Count - 6} more[/]"));
 
-        return table;
+        return new Panel(new Rows(rows))
+            .Border(BoxBorder.None)
+            .Padding(1, 1)
+            .Expand();
     }
 
     private static IRenderable BuildHelpTable()
@@ -474,6 +492,45 @@ public static class ConsoleHelper
             PlaybackStatus.Detached => $"[{Secondary}]Detached to mpv[/]",
             _ => $"[{Chrome}]Idle[/]"
         };
+
+    private static string BuildVisualizer(PlaybackStatus status)
+    {
+        var width = Math.Clamp(GetWindowSize().Width / 3, 18, 42);
+        if (status == PlaybackStatus.Paused)
+            return $"[{Muted}]{string.Join(' ', Enumerable.Repeat("▃", Math.Min(width, 18)))}[/]";
+
+        if (status is not (PlaybackStatus.Playing or PlaybackStatus.Loading))
+            return $"[{Chrome}]{BuildIdleWave(Math.Min(width, 24))}[/]";
+
+        var tick = Environment.TickCount64 / 95;
+        var bars = Enumerable.Range(0, width)
+            .Select(i =>
+            {
+                var phase = (int)((tick + (i * 3) + ((i % 5) * 2)) % VisualizerBars.Length);
+                return VisualizerBars[phase];
+            });
+
+        return $"[{SuccessColor}]{string.Join(' ', bars)}[/]";
+    }
+
+    private static string BuildIdleWave(int width)
+    {
+        var tick = Environment.TickCount64 / 260;
+        var output = Enumerable.Range(0, width)
+            .Select(i => (i + tick) % 7 == 0 ? "▂" : "▁");
+
+        return string.Join(' ', output);
+    }
+
+    private static IRenderable BuildPromptSuggestions()
+    {
+        var suggestions = new Markup(
+            $"[{Muted}]try[/] [{Accent}]add <url>[/]  [{Muted}]play/pause[/]  [{Accent}]next[/]  [{Muted}]mini[/]  [{Accent}]help[/]  [{Muted}]q[/]");
+
+        return new Panel(suggestions)
+            .Border(BoxBorder.None)
+            .Padding(0, 0, 0, 0);
+    }
 
     private static void RenderPrompt(string input)
     {

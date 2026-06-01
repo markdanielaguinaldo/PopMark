@@ -19,6 +19,7 @@ internal static class Program
         var history = new List<string>();
         var notice = "Ready. Add a YouTube video or playlist URL to start.";
         var miniMode = false;
+        var showHelp = false;
         player.LastMessage = notice;
         player.SnapshotChanged += QueueCacheStore.Save;
 
@@ -72,7 +73,7 @@ internal static class Program
                 if (miniMode)
                     ConsoleHelper.DrawMiniPlayer(player.CreateSnapshot(), player.LastMessage);
                 else
-                    ConsoleHelper.DrawCommandCenter(player.CreateSnapshot(), player.LastMessage);
+                    ConsoleHelper.DrawCommandCenter(player.CreateSnapshot(), player.LastMessage, showHelp);
                 ConsoleHelper.UseBarCursor();
 
                 var input = ConsoleHelper.ReadReactiveInput(
@@ -81,7 +82,8 @@ internal static class Program
                     history,
                     () => player.CreateSnapshot(),
                     () => player.LastMessage,
-                    () => miniMode);
+                    () => miniMode,
+                    () => showHelp);
                 if (string.IsNullOrWhiteSpace(input))
                 {
                     notice = "Type help to list commands.";
@@ -96,6 +98,15 @@ internal static class Program
 
                 try
                 {
+                    showHelp = parsedArgs[0].Equals("help", StringComparison.OrdinalIgnoreCase) ||
+                               parsedArgs[0].Equals("h", StringComparison.OrdinalIgnoreCase) ||
+                               parsedArgs[0].Equals("?", StringComparison.OrdinalIgnoreCase);
+                    if (showHelp && miniMode)
+                    {
+                        miniMode = false;
+                        ConsoleHelper.ConfigureMiniModeWindow(false);
+                    }
+
                     keepRunning = !await ProcessCommandAsync(
                         player,
                         dependencies,
@@ -155,10 +166,10 @@ internal static class Program
                 if (string.IsNullOrWhiteSpace(url))
                 {
                     url = AnsiConsole.Prompt(
-                        new TextPrompt<string>("[bold pink1]YouTube URL[/]:")
+                        new TextPrompt<string>("[bold deepskyblue1]YouTube URL[/]:")
                             .Validate(value => IsLikelyUrl(value)
                                 ? ValidationResult.Success()
-                                : ValidationResult.Error("[red]Enter a valid URL.[/]")));
+                                : ValidationResult.Error("[cyan1]Enter a valid URL.[/]")));
                 }
 
                 await AddUrlAsync(player, dependencies, url, promptToInstallDependencies: true, confirmInstallDependencies: true, showStatus: true);

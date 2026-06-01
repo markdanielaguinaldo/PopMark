@@ -19,12 +19,21 @@ public static class ConsoleHelper
     private const int MiniConsoleColumns = 52;
     private const int MiniConsoleRows = 13;
     private const string Accent = "deepskyblue1";
-    private const string Secondary = "cyan1";
-    private const string SuccessColor = "turquoise2";
-    private const string Muted = "grey58";
-    private const string Chrome = "grey23";
-    private const string PanelBorder = "deepskyblue1";
+    private const string Secondary = "lightskyblue1";
+    private const string SuccessColor = "cyan1";
+    private const string Muted = "grey70";
+    private const string Chrome = "grey35";
+    private const string PanelBorder = "steelblue1";
+    private const string AnsiReset = "\u001b[0m";
+    private const string AnsiAccent = "\u001b[38;2;0;191;255m";
+    private const string AnsiSecondary = "\u001b[38;2;135;206;250m";
+    private const string AnsiSuccess = "\u001b[38;2;0;255;255m";
+    private const string AnsiMuted = "\u001b[38;2;176;183;195m";
+    private const string AnsiBorder = "\u001b[38;2;95;168;211m";
+    private const string AnsiWhite = "\u001b[37m";
     private static ConsoleWindowState? _savedWindowState;
+    private static int? _miniSpinnerLeft;
+    private static int? _miniSpinnerTop;
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern nint GetStdHandle(int nStdHandle);
@@ -95,7 +104,7 @@ public static class ConsoleHelper
                     while (!Console.KeyAvailable)
                     {
                         ctx.UpdateTarget(CreateSplashFrame(frame));
-                        Thread.Sleep(72);
+                        Thread.Sleep(52);
                         frame = (frame + 1) % 160;
                     }
 
@@ -109,7 +118,7 @@ public static class ConsoleHelper
         }
     }
 
-    public static void DrawCommandCenter(PlayerSnapshot snapshot, string notice)
+    public static void DrawCommandCenter(PlayerSnapshot snapshot, string notice, bool showHelp = false)
     {
         TryClear();
 
@@ -119,7 +128,10 @@ public static class ConsoleHelper
         AnsiConsole.WriteLine();
         AnsiConsole.Write(BuildQueueTable(snapshot));
         AnsiConsole.WriteLine();
-        AnsiConsole.Write(BuildHelpTable());
+        if (showHelp)
+            AnsiConsole.Write(BuildHelpTable());
+        else
+            AnsiConsole.Write(Align.Center(new Markup($"[{Muted}]Type [{Accent}]help[/] to see commands.[/]")));
         AnsiConsole.Write(new Rule().RuleStyle("grey"));
     }
 
@@ -130,27 +142,33 @@ public static class ConsoleHelper
         var track = snapshot.Current?.Title
             ?? snapshot.Pending.FirstOrDefault()?.Title
             ?? "Queue is empty";
-        var (_, windowHeight) = GetWindowSize();
+        var (windowWidth, windowHeight) = GetWindowSize();
+        if (windowWidth <= 0 || windowHeight <= 0)
+            return;
+
+        var widgetWidth = Math.Min(MiniWidgetWidth, Math.Max(24, windowWidth));
+        var innerWidth = widgetWidth - 2;
+        var left = Math.Max(0, windowWidth - widgetWidth);
         var topPadding = Math.Max(0, windowHeight - MiniWidgetHeight - 2);
-        var textWidth = MiniWidgetWidth - 12;
-        if (!Console.IsOutputRedirected && topPadding > 0)
-            Console.Write(new string('\n', topPadding));
+        var textWidth = Math.Max(8, innerWidth - 4);
 
-        var body = new Rows(
-            Align.Center(new Markup($"[bold {Accent}]PopMark[/] [dim {Secondary}]// mini[/]")),
-            Align.Center(new Markup(StatusMarkup(snapshot.Status))),
-            Align.Center(new Markup($"[white]{Markup.Escape(TrimForWidget(track, textWidth))}[/]")),
-            Align.Center(new Markup(BuildEqualizer(snapshot.Status))),
-            Align.Center(new Markup($"[{Muted}]{Markup.Escape(TrimForWidget(notice, textWidth))}[/]")),
-            Align.Center(new Markup($"[{Accent}]a[/] [{Muted}]+[/] [{Secondary}]r[/] [{Muted}]play[/] [{Secondary}]n[/] [{Muted}]next[/] [{Secondary}]m[/] [{Muted}]full[/] [{Accent}]q[/]")));
+        try
+        {
+            DrawMiniBorderLine(left, topPadding, widgetWidth, top: true);
+            DrawMiniTextLine(left, topPadding + 1, innerWidth, "PopMark // mini", AnsiAccent, center: true);
+            DrawMiniStatusLine(left, topPadding + 2, innerWidth, snapshot.Status);
+            DrawMiniTextLine(left, topPadding + 3, innerWidth, TrimForWidget(track, textWidth), AnsiWhite, center: true);
+            DrawMiniTextLine(left, topPadding + 4, innerWidth, TrimForWidget(notice, textWidth), AnsiMuted, center: true);
+            DrawMiniTextLine(left, topPadding + 5, innerWidth, "Type help for commands", AnsiMuted, center: true);
+            DrawMiniBorderLine(left, topPadding + 6, widgetWidth, top: false);
 
-        var panel = new Panel(body)
-            .Border(BoxBorder.Rounded)
-            .BorderStyle(Style.Parse(PanelBorder))
-            .Header($"[bold {Secondary}]ON AIR[/]", Justify.Right)
-            .Padding(1, 0);
-
-        AnsiConsole.Write(Align.Right(panel));
+            Console.SetCursorPosition(0, Math.Min(windowHeight - 1, topPadding + MiniWidgetHeight - 1));
+        }
+        catch
+        {
+            _miniSpinnerLeft = null;
+            _miniSpinnerTop = null;
+        }
     }
 
     public static void ConfigureMiniModeWindow(bool enabled)
@@ -185,14 +203,15 @@ public static class ConsoleHelper
         List<string> commandHistory,
         Func<PlayerSnapshot>? snapshotProvider = null,
         Func<string>? noticeProvider = null,
-        Func<bool>? miniModeProvider = null)
+        Func<bool>? miniModeProvider = null,
+        Func<bool>? helpModeProvider = null)
     {
         var buffer = new StringBuilder();
         var historyIndex = commandHistory.Count;
         var browsingHistory = false;
         var draftInput = string.Empty;
         var lastRefresh = DateTimeOffset.UtcNow;
-        var lastScreenSignature = BuildScreenSignature(snapshotProvider, noticeProvider, miniModeProvider);
+        var lastScreenSignature = BuildScreenSignature(snapshotProvider, noticeProvider, miniModeProvider, helpModeProvider);
         RenderPrompt(buffer.ToString());
 
         void RefreshScreen()
@@ -203,8 +222,16 @@ public static class ConsoleHelper
             if (miniModeProvider?.Invoke() == true)
                 DrawMiniPlayer(snapshotProvider(), noticeProvider());
             else
-                DrawCommandCenter(snapshotProvider(), noticeProvider());
+                DrawCommandCenter(snapshotProvider(), noticeProvider(), helpModeProvider?.Invoke() == true);
             RenderPrompt(buffer.ToString());
+        }
+
+        void RefreshMiniSpinner()
+        {
+            if (miniModeProvider?.Invoke() != true)
+                return;
+
+            UpdateMiniSpinner();
         }
 
         void RedrawInputLine()
@@ -230,11 +257,15 @@ public static class ConsoleHelper
                 if ((DateTimeOffset.UtcNow - lastRefresh).TotalMilliseconds >= 250)
                 {
                     lastRefresh = DateTimeOffset.UtcNow;
-                    var screenSignature = BuildScreenSignature(snapshotProvider, noticeProvider, miniModeProvider);
+                    var screenSignature = BuildScreenSignature(snapshotProvider, noticeProvider, miniModeProvider, helpModeProvider);
                     if (!string.Equals(screenSignature, lastScreenSignature, StringComparison.Ordinal))
                     {
                         lastScreenSignature = screenSignature;
                         RefreshScreen();
+                    }
+                    else
+                    {
+                        RefreshMiniSpinner();
                     }
                 }
 
@@ -411,9 +442,9 @@ public static class ConsoleHelper
 
         var spinner = snapshot.Status switch
         {
-            PlaybackStatus.Playing => SpinnerFrame("Playing"),
+            PlaybackStatus.Playing => $"[{SuccessColor}]Playing[/]",
             PlaybackStatus.Paused => $"[{Accent}]Paused[/]",
-            PlaybackStatus.Loading => SpinnerFrame("Loading"),
+            PlaybackStatus.Loading => $"[{Secondary}]Loading[/]",
             _ => $"[{Muted}]Idle[/]"
         };
 
@@ -432,9 +463,9 @@ public static class ConsoleHelper
         grid.AddRow($"[{Muted}]Track[/]", snapshot.Current is null
             ? $"[{Muted}]Drop in a link with add <url>[/]"
             : $"[bold white]{Markup.Escape(snapshot.Current.Title)}[/]");
-        grid.AddRow($"[{Muted}]Motion[/]", BuildEqualizer(snapshot.Status));
+        grid.AddRow($"[{Muted}]Activity[/]", ActivityMarkup(snapshot.Status));
         grid.AddRow($"[{Muted}]Message[/]", $"[silver]{Markup.Escape(notice)}[/]");
-        grid.AddRow($"[{Muted}]Controls[/]", $"[{Accent}]add[/] [{Muted}]|[/] [{Secondary}]play/pause[/] [{Muted}]|[/] [{Secondary}]next[/] [{Muted}]|[/] [{Accent}]cls[/] [{Muted}]|[/] [{Accent}]q[/]");
+        grid.AddRow($"[{Muted}]Hint[/]", $"Type [{Accent}]help[/] to see commands.");
 
         return new Panel(grid)
             .Border(BoxBorder.Double)
@@ -496,35 +527,43 @@ public static class ConsoleHelper
     private static string StatusMarkup(PlaybackStatus status) =>
         status switch
         {
-            PlaybackStatus.Playing => $"{SpinnerFrame("Playing")}",
+            PlaybackStatus.Playing => $"[{SuccessColor}]Playing[/]",
             PlaybackStatus.Paused => $"[{Accent}]Paused[/]",
-            PlaybackStatus.Loading => $"{SpinnerFrame("Loading")}",
+            PlaybackStatus.Loading => $"[{Secondary}]Loading[/]",
             PlaybackStatus.Detached => $"[{Secondary}]Detached[/]",
             _ => $"[{Muted}]Stopped[/]"
         };
 
-    private static string SpinnerFrame(string label)
+    private static string MiniStatusMarkup(PlaybackStatus status) =>
+        status switch
+        {
+            PlaybackStatus.Playing => $"{SpinnerFrame()} [white]Playing[/]",
+            PlaybackStatus.Loading => $"{SpinnerFrame()} [white]Loading[/]",
+            PlaybackStatus.Paused => $"{SpinnerFrame()} [{Accent}]Paused[/]",
+            PlaybackStatus.Detached => $"{SpinnerFrame()} [{Secondary}]Detached[/]",
+            _ => $"{SpinnerFrame()} [{Muted}]Stopped[/]"
+        };
+
+    private static string SpinnerFrame()
     {
-        var frames = new[] { "o", "O", "@", "O" };
-        var frame = frames[(Environment.TickCount64 / 160) % frames.Length];
-        return $"[{SuccessColor}]{frame}[/] [white]{label}[/]";
+        return $"[{SuccessColor}]{SpinnerFrameRaw()}[/]";
     }
 
-    private static string BuildEqualizer(PlaybackStatus status)
+    private static string SpinnerFrameRaw()
     {
-        if (status == PlaybackStatus.Paused)
-            return $"[{Accent}]▁ ▁ ▁ ▁ ▁ ▁ ▁ ▁[/]";
-
-        if (status is not (PlaybackStatus.Playing or PlaybackStatus.Loading))
-            return $"[{Chrome}]▁ ▁ ▁ ▁ ▁ ▁ ▁ ▁[/]";
-
-        var bars = new[] { "▁", "▂", "▃", "▄", "▅", "▆", "▇" };
-        var offset = (int)((Environment.TickCount64 / 120) % bars.Length);
-        var output = Enumerable.Range(0, 12)
-            .Select(i => bars[(i + offset + (i % 3)) % bars.Length]);
-
-        return $"[{SuccessColor}]{string.Join(' ', output)}[/]";
+        var frames = new[] { "|", "/", "-", "\\" };
+        return frames[(Environment.TickCount64 / 180) % frames.Length];
     }
+
+    private static string ActivityMarkup(PlaybackStatus status) =>
+        status switch
+        {
+            PlaybackStatus.Playing => $"[{SuccessColor}]Active[/]",
+            PlaybackStatus.Loading => $"[{Secondary}]Loading metadata[/]",
+            PlaybackStatus.Paused => $"[{Accent}]Paused[/]",
+            PlaybackStatus.Detached => $"[{Secondary}]Detached to mpv[/]",
+            _ => $"[{Chrome}]Idle[/]"
+        };
 
     private static void RenderPrompt(string input)
     {
@@ -535,7 +574,8 @@ public static class ConsoleHelper
     private static string? BuildScreenSignature(
         Func<PlayerSnapshot>? snapshotProvider,
         Func<string>? noticeProvider,
-        Func<bool>? miniModeProvider)
+        Func<bool>? miniModeProvider,
+        Func<bool>? helpModeProvider)
     {
         if (snapshotProvider is null || noticeProvider is null)
             return null;
@@ -543,6 +583,8 @@ public static class ConsoleHelper
         var snapshot = snapshotProvider();
         var builder = new StringBuilder()
             .Append(miniModeProvider?.Invoke() == true ? "mini" : "full")
+            .Append('|')
+            .Append(helpModeProvider?.Invoke() == true ? "help" : "normal")
             .Append('|')
             .Append(snapshot.Status)
             .Append('|')
@@ -553,14 +595,6 @@ public static class ConsoleHelper
 
         foreach (var track in snapshot.Pending)
             AppendTrack(builder.Append('|'), track);
-
-        var isMiniMode = miniModeProvider?.Invoke() == true;
-        if (isMiniMode && snapshot.Status is PlaybackStatus.Playing or PlaybackStatus.Loading)
-        {
-            builder
-                .Append("|anim:")
-                .Append(Environment.TickCount64 / 250);
-        }
 
         return builder.ToString();
     }
@@ -591,6 +625,88 @@ public static class ConsoleHelper
         return maxLength <= 3 ? value[..maxLength] : $"{value[..(maxLength - 3)]}...";
     }
 
+    private static void UpdateMiniSpinner()
+    {
+        if (Console.IsOutputRedirected || _miniSpinnerLeft is null || _miniSpinnerTop is null)
+            return;
+
+        try
+        {
+            var currentLeft = Console.CursorLeft;
+            var currentTop = Console.CursorTop;
+            Console.SetCursorPosition(_miniSpinnerLeft.Value, _miniSpinnerTop.Value);
+            Console.Write($"{AnsiSuccess}{SpinnerFrameRaw()}{AnsiReset}");
+            Console.SetCursorPosition(currentLeft, currentTop);
+        }
+        catch
+        {
+            _miniSpinnerLeft = null;
+            _miniSpinnerTop = null;
+        }
+    }
+
+    private static void DrawMiniBorderLine(int left, int row, int width, bool isTop)
+    {
+        Console.SetCursorPosition(left, row);
+        var leftCorner = isTop ? "╭" : "╰";
+        var rightCorner = isTop ? "╮" : "╯";
+        Console.Write($"{AnsiBorder}{leftCorner}{new string('─', width - 2)}{rightCorner}{AnsiReset}");
+    }
+
+    private static void DrawMiniTextLine(int left, int top, int innerWidth, string text, string color, bool center)
+    {
+        var content = center ? CenterText(text, innerWidth) : text.PadRight(innerWidth);
+        if (content.Length > innerWidth)
+            content = content[..innerWidth];
+
+        Console.SetCursorPosition(left, top);
+        Console.Write($"{AnsiBorder}│{AnsiReset}{color}{content}{AnsiReset}{AnsiBorder}│{AnsiReset}");
+    }
+
+    private static void DrawMiniStatusLine(int left, int top, int innerWidth, PlaybackStatus status)
+    {
+        var label = MiniStatusLabel(status);
+        var textLength = label.Length + 2;
+        var padding = Math.Max(0, (innerWidth - textLength) / 2);
+        var trailing = Math.Max(0, innerWidth - padding - textLength);
+        var labelColor = status switch
+        {
+            PlaybackStatus.Playing => AnsiSuccess,
+            PlaybackStatus.Loading => AnsiSecondary,
+            PlaybackStatus.Paused => AnsiAccent,
+            PlaybackStatus.Detached => AnsiSecondary,
+            _ => AnsiMuted
+        };
+
+        Console.SetCursorPosition(left, top);
+        Console.Write($"{AnsiBorder}│{AnsiReset}");
+        Console.Write(new string(' ', padding));
+        _miniSpinnerLeft = left + 1 + padding;
+        _miniSpinnerTop = top;
+        Console.Write($"{AnsiSuccess}{SpinnerFrameRaw()}{AnsiReset} {labelColor}{label}{AnsiReset}");
+        Console.Write(new string(' ', trailing));
+        Console.Write($"{AnsiBorder}│{AnsiReset}");
+    }
+
+    private static string MiniStatusLabel(PlaybackStatus status) =>
+        status switch
+        {
+            PlaybackStatus.Playing => "Playing",
+            PlaybackStatus.Loading => "Loading",
+            PlaybackStatus.Paused => "Paused",
+            PlaybackStatus.Detached => "Detached",
+            _ => "Stopped"
+        };
+
+    private static string CenterText(string text, int width)
+    {
+        if (text.Length >= width)
+            return text[..width];
+
+        var leftPadding = (width - text.Length) / 2;
+        return new string(' ', leftPadding) + text + new string(' ', width - text.Length - leftPadding);
+    }
+
     private static IRenderable CreateSplashFrame(int frame)
     {
         var footer = new Rows(
@@ -610,11 +726,11 @@ public static class ConsoleHelper
         const int width = 44;
         const int height = 22;
         var canvas = new Canvas(width, height);
-        var bob = Math.Sin(frame * 0.18) * 0.65;
+        var bob = Math.Sin(frame * 0.32) * 0.65;
         var body = Color.DeepSkyBlue1;
         var label = Color.Grey93;
-        var accent = frame % 18 < 9 ? Color.Turquoise2 : Color.Cyan1;
-        var dark = Color.Grey23;
+        var accent = frame % 14 < 7 ? Color.Cyan1 : Color.Turquoise2;
+        var dark = Color.Grey27;
 
         FillRect(canvas, 6, 5 + bob, 32, 13, body);
         FillRect(canvas, 8, 8 + bob, 28, 4, label);

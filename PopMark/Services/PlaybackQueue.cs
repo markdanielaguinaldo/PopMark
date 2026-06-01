@@ -174,6 +174,18 @@ public sealed class PlaybackQueue
         NotifySnapshotChanged();
     }
 
+    public async Task StopPlaybackAndKeepQueueAsync(CancellationToken cancellationToken = default)
+    {
+        lock (_syncRoot)
+        {
+            _status = PlaybackStatus.Stopped;
+        }
+
+        await _mpv.StopAsync(cancellationToken);
+        LastMessage = "Stopped playback. Queue saved for next launch.";
+        NotifySnapshotChanged();
+    }
+
     public async Task DetachAsync(CancellationToken cancellationToken = default)
     {
         List<Track> tracksToAppend;

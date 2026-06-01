@@ -18,6 +18,8 @@ internal static class Program
         var dependencies = new DependencyInstaller();
         var history = new List<string>();
         var notice = "Ready. Add a YouTube video or playlist URL to start.";
+        var miniMode = false;
+        player.SnapshotChanged += QueueCacheStore.Save;
 
         try
         {
@@ -31,7 +33,9 @@ internal static class Program
             if (TryParseNonInteractiveOptions(args, out var options))
                 return await RunNonInteractiveAsync(player, dependencies, options);
 
-            if (args.Length > 0 && IsLikelyUrl(args[0]))
+            var hasStartupUrl = args.Length > 0 && IsLikelyUrl(args[0]);
+
+            if (hasStartupUrl)
             {
                 try
                 {
@@ -47,6 +51,13 @@ internal static class Program
             else
             {
                 ConsoleHelper.ShowStartupSplash();
+
+                var cachedQueue = QueueCacheStore.Load();
+                if (cachedQueue.Current is not null || cachedQueue.Pending.Count > 0)
+                {
+                    player.RestoreQueue(cachedQueue);
+                    notice = player.LastMessage;
+                }
             }
 
             var (lastWidth, lastHeight) = ConsoleHelper.GetWindowSize();
@@ -54,7 +65,10 @@ internal static class Program
 
             while (keepRunning)
             {
-                ConsoleHelper.DrawCommandCenter(player.CreateSnapshot(), notice);
+                if (miniMode)
+                    ConsoleHelper.DrawMiniPlayer(player.CreateSnapshot(), notice);
+                else
+                    ConsoleHelper.DrawCommandCenter(player.CreateSnapshot(), notice);
                 ConsoleHelper.UseBarCursor();
 
                 var input = ConsoleHelper.ReadReactiveInput(
@@ -62,7 +76,8 @@ internal static class Program
                     ref lastHeight,
                     history,
                     () => player.CreateSnapshot(),
-                    () => notice);
+                    () => notice,
+                    () => miniMode);
                 if (string.IsNullOrWhiteSpace(input))
                 {
                     notice = "Type help to list commands.";
@@ -76,7 +91,16 @@ internal static class Program
 
                 try
                 {
-                    keepRunning = !await ProcessCommandAsync(player, dependencies, parsedArgs, input);
+                    keepRunning = !await ProcessCommandAsync(
+                        player,
+                        dependencies,
+                        parsedArgs,
+                        input,
+                        () =>
+                        {
+                            miniMode = !miniMode;
+                            player.LastMessage = miniMode ? "Mini mode enabled." : "Full player view enabled.";
+                        });
                     notice = player.LastMessage;
                 }
                 catch (Exception ex)
@@ -103,7 +127,8 @@ internal static class Program
         PlaybackQueue player,
         DependencyInstaller dependencies,
         string[] args,
-        string rawInput)
+        string rawInput,
+        Action toggleMiniMode)
     {
         var command = args[0].ToLowerInvariant();
 
@@ -167,11 +192,15 @@ internal static class Program
                 player.LastMessage = "Screen refreshed.";
                 return false;
 
+            case "mini":
+            case "m":
+                toggleMiniMode();
+                return false;
+
             case "quit":
             case "exit":
             case "q":
-                await player.StopAsync(clearQueue: true);
-                player.LastMessage = "Stopped playback and exited.";
+                await player.StopPlaybackAndKeepQueueAsync();
                 return true;
 
             default:

@@ -93,12 +93,37 @@ public static class ConsoleHelper
         AnsiConsole.Write(new Rule().RuleStyle("grey"));
     }
 
+    public static void DrawMiniPlayer(PlayerSnapshot snapshot, string notice)
+    {
+        TryClear();
+
+        var track = snapshot.Current?.Title
+            ?? snapshot.Pending.FirstOrDefault()?.Title
+            ?? "Queue is empty";
+
+        var body = new Rows(
+            Align.Center(new Markup("[bold mediumorchid1]PopMark[/]")),
+            Align.Center(new Markup(StatusMarkup(snapshot.Status))),
+            Align.Center(new Markup($"[white]{Markup.Escape(track)}[/]")),
+            Align.Center(new Markup(BuildEqualizer(snapshot.Status))),
+            Align.Center(new Markup($"[grey]{Markup.Escape(notice)}[/]")),
+            Align.Center(new Markup("[mediumorchid1]add[/] [grey]|[/] [mediumorchid1]play/pause[/] [grey]|[/] [mediumorchid1]next[/] [grey]|[/] [mediumorchid1]mini[/] [grey]|[/] [mediumorchid1]q[/]")));
+
+        AnsiConsole.Write(new Panel(body)
+            .Border(BoxBorder.Rounded)
+            .BorderStyle(new Style(Color.MediumPurple1))
+            .Header("[bold springgreen1]Mini Player[/]")
+            .Expand());
+        AnsiConsole.Write(new Rule().RuleStyle("grey"));
+    }
+
     public static string ReadReactiveInput(
         ref int lastWidth,
         ref int lastHeight,
         List<string> commandHistory,
         Func<PlayerSnapshot>? snapshotProvider = null,
-        Func<string>? noticeProvider = null)
+        Func<string>? noticeProvider = null,
+        Func<bool>? miniModeProvider = null)
     {
         var buffer = new StringBuilder();
         var historyIndex = commandHistory.Count;
@@ -112,7 +137,10 @@ public static class ConsoleHelper
             if (snapshotProvider is null || noticeProvider is null)
                 return;
 
-            DrawCommandCenter(snapshotProvider(), noticeProvider());
+            if (miniModeProvider?.Invoke() == true)
+                DrawMiniPlayer(snapshotProvider(), noticeProvider());
+            else
+                DrawCommandCenter(snapshotProvider(), noticeProvider());
             RenderPrompt(buffer.ToString());
         }
 
@@ -391,6 +419,7 @@ public static class ConsoleHelper
         table.AddRow("play / pause", "Toggle playback", "r");
         table.AddRow("next", "Skip to the next queued track", "n");
         table.AddRow("cls", "Clear and redraw the command center", "clear / Ctrl+L");
+        table.AddRow("mini", "Toggle compact player view", "m");
         table.AddRow("quit", "Stop playback and exit", "q");
 
         return table;

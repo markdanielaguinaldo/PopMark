@@ -14,6 +14,7 @@ dotnet run --project .\PopMark\PopMark.csproj -- deps
 ```
 
 Local tools are stored under `%LOCALAPPDATA%\PopMark\tools`.
+Queue state is saved under `%LOCALAPPDATA%\PopMark\queue.json` so PopMark can restore your last queue on the next launch.
 
 ## Run
 
@@ -39,4 +40,5 @@ dotnet run --project .\PopMark\PopMark.csproj -- play-test "https://www.youtube.
 - `play` or `pause`: toggle playback
 - `next`: skip to the next track
 - `cls` or `clear`: clear and redraw the command center
+- `mini`: toggle compact player mode
 - `quit`: stop playback and exit

@@ -364,7 +364,7 @@ public static class ConsoleHelper
             .AddColumn(new GridColumn().RightAligned());
 
         grid.AddRow(
-            $"[bold {Accent}]PopMark[/] [{Muted}]music daemon[/] [grey35]//[/] [{Secondary}]terminal session[/]",
+            $"[bold {Accent}]PopMark[/] [{Muted}]terminal player[/]",
             $"{StatusMarkup(snapshot.Status)} [{Chrome}]|[/] [{Muted}]queue[/] [white]{snapshot.Pending.Count}[/]");
 
         return new Panel(grid)
@@ -421,7 +421,7 @@ public static class ConsoleHelper
     {
         var rows = new List<IRenderable>
         {
-            new Markup($"[{Muted}]UP NEXT[/]")
+            new Markup($"[{Muted}]QUEUE[/]")
         };
 
         var index = 1;

@@ -15,15 +15,34 @@ internal static class Program
         var ytDlp = new YtDlpService();
         var mpv = new MpvPlayer();
         var player = new PlaybackQueue(ytDlp, mpv);
+        var dependencies = new DependencyInstaller();
         var history = new List<string>();
         var notice = "Ready. Add a YouTube video or playlist URL to start.";
 
         try
         {
+            var clearedSessions = PlaybackSessionStore.CleanupStaleSessions();
+            if (clearedSessions > 0)
+                notice = $"Cleared {clearedSessions} previous PopMark playback session(s).";
+
+            if (args.Length > 0 && args[0].Equals("deps", StringComparison.OrdinalIgnoreCase))
+                return await RunDependencyInstallAsync(dependencies);
+
+            if (TryParseNonInteractiveOptions(args, out var options))
+                return await RunNonInteractiveAsync(player, dependencies, options);
+
             if (args.Length > 0 && IsLikelyUrl(args[0]))
             {
-                await AddUrlAsync(player, args[0]);
-                notice = $"Loaded startup URL: {args[0]}";
+                try
+                {
+                    await AddUrlAsync(player, dependencies, args[0], promptToInstallDependencies: true, confirmInstallDependencies: true, showStatus: true);
+                    notice = player.LastMessage;
+                }
+                catch (Exception ex)
+                {
+                    notice = ex.Message;
+                    player.LastMessage = ex.Message;
+                }
             }
             else
             {
@@ -38,7 +57,12 @@ internal static class Program
                 ConsoleHelper.DrawCommandCenter(player.CreateSnapshot(), notice);
                 ConsoleHelper.UseBarCursor();
 
-                var input = ConsoleHelper.ReadReactiveInput(ref lastWidth, ref lastHeight, history);
+                var input = ConsoleHelper.ReadReactiveInput(
+                    ref lastWidth,
+                    ref lastHeight,
+                    history,
+                    () => player.CreateSnapshot(),
+                    () => notice);
                 if (string.IsNullOrWhiteSpace(input))
                 {
                     notice = "Type help to list commands.";
@@ -50,8 +74,16 @@ internal static class Program
                 if (parsedArgs.Length == 0)
                     continue;
 
-                keepRunning = !await ProcessCommandAsync(player, parsedArgs, input);
-                notice = player.LastMessage;
+                try
+                {
+                    keepRunning = !await ProcessCommandAsync(player, dependencies, parsedArgs, input);
+                    notice = player.LastMessage;
+                }
+                catch (Exception ex)
+                {
+                    player.LastMessage = ex.Message;
+                    notice = ex.Message;
+                }
             }
 
             return 0;
@@ -67,7 +99,11 @@ internal static class Program
         }
     }
 
-    private static async Task<bool> ProcessCommandAsync(PlaybackQueue player, string[] args, string rawInput)
+    private static async Task<bool> ProcessCommandAsync(
+        PlaybackQueue player,
+        DependencyInstaller dependencies,
+        string[] args,
+        string rawInput)
     {
         var command = args[0].ToLowerInvariant();
 
@@ -92,22 +128,18 @@ internal static class Program
                                 : ValidationResult.Error("[red]Enter a valid URL.[/]")));
                 }
 
-                await AddUrlAsync(player, url);
+                await AddUrlAsync(player, dependencies, url, promptToInstallDependencies: true, confirmInstallDependencies: true, showStatus: true);
                 return false;
 
-            case "pause":
-            case "p":
-                await player.PauseAsync();
+            case "deps":
+            case "dependencies":
+            case "install-deps":
+                player.LastMessage = await dependencies.EnsurePlaybackDependenciesAsync(promptToInstall: true, confirmInstall: true);
                 return false;
 
-            case "resume":
             case "play":
+            case "pause":
             case "r":
-                await player.ResumeAsync();
-                return false;
-
-            case "toggle":
-            case "t":
                 await player.TogglePauseAsync();
                 return false;
 
@@ -135,11 +167,6 @@ internal static class Program
                 player.LastMessage = "Screen refreshed.";
                 return false;
 
-            case "detach":
-            case "d":
-                await player.DetachAsync();
-                return true;
-
             case "quit":
             case "exit":
             case "q":
@@ -150,7 +177,7 @@ internal static class Program
             default:
                 if (IsLikelyUrl(rawInput))
                 {
-                    await AddUrlAsync(player, rawInput);
+                    await AddUrlAsync(player, dependencies, rawInput, promptToInstallDependencies: true, confirmInstallDependencies: true, showStatus: true);
                     return false;
                 }
 
@@ -159,15 +186,149 @@ internal static class Program
         }
     }
 
-    private static async Task AddUrlAsync(PlaybackQueue player, string url)
+    private static async Task<int> RunNonInteractiveAsync(
+        PlaybackQueue player,
+        DependencyInstaller dependencies,
+        NonInteractiveOptions options)
     {
-        await AnsiConsole.Status()
-            .Spinner(Spinner.Known.Dots)
-            .SpinnerStyle(Style.Parse("pink1"))
-            .StartAsync("Loading YouTube metadata with yt-dlp...", async _ =>
+        try
+        {
+            ConsoleHelper.Info($"Loading URL: {options.Url}");
+            await AddUrlAsync(
+                player,
+                dependencies,
+                options.Url,
+                promptToInstallDependencies: options.InstallDependencies,
+                confirmInstallDependencies: false,
+                showStatus: false);
+
+            if (!dependencies.ArePlaybackDependenciesAvailable())
             {
-                await player.AddUrlAsync(url);
-            });
+                ConsoleHelper.Error(player.LastMessage);
+                return 2;
+            }
+
+            var snapshot = player.CreateSnapshot();
+            if (snapshot.Current is null)
+            {
+                ConsoleHelper.Error(player.LastMessage);
+                return 1;
+            }
+
+            ConsoleHelper.Success($"Now playing: {snapshot.Current.Title}");
+            ConsoleHelper.Info($"Keeping playback alive for {options.Seconds} second(s).");
+            await Task.Delay(TimeSpan.FromSeconds(options.Seconds));
+
+            await player.StopAsync(clearQueue: true);
+            ConsoleHelper.Success("Playback test finished.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            ConsoleHelper.Error(ex.Message);
+            return 1;
+        }
+    }
+
+    private static async Task AddUrlAsync(
+        PlaybackQueue player,
+        DependencyInstaller dependencies,
+        string url,
+        bool promptToInstallDependencies,
+        bool confirmInstallDependencies,
+        bool showStatus)
+    {
+        var dependencyMessage = await dependencies.EnsurePlaybackDependenciesAsync(
+            promptToInstall: promptToInstallDependencies,
+            confirmInstall: confirmInstallDependencies);
+        if (!dependencies.ArePlaybackDependenciesAvailable())
+        {
+            player.LastMessage = dependencyMessage;
+            return;
+        }
+
+        if (showStatus)
+        {
+            await AnsiConsole.Status()
+                .Spinner(Spinner.Known.Dots)
+                .SpinnerStyle(Style.Parse("pink1"))
+                .StartAsync("Loading YouTube metadata with yt-dlp...", async _ =>
+                {
+                    await player.AddUrlAsync(url);
+                });
+            return;
+        }
+
+        await player.AddUrlAsync(url);
+    }
+
+    private static async Task<int> RunDependencyInstallAsync(DependencyInstaller dependencies)
+    {
+        try
+        {
+            var message = await dependencies.EnsurePlaybackDependenciesAsync(promptToInstall: true, confirmInstall: false);
+            if (!dependencies.ArePlaybackDependenciesAvailable())
+            {
+                ConsoleHelper.Error(message);
+                return 2;
+            }
+
+            ConsoleHelper.Success(message);
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            ConsoleHelper.Error(ex.Message);
+            return 1;
+        }
+    }
+
+    private static bool TryParseNonInteractiveOptions(string[] args, out NonInteractiveOptions options)
+    {
+        options = new NonInteractiveOptions(string.Empty, Seconds: 15, InstallDependencies: false);
+        if (args.Length == 0)
+            return false;
+
+        var command = args[0].ToLowerInvariant();
+        var nonInteractive = args.Any(arg => arg.Equals("--non-interactive", StringComparison.OrdinalIgnoreCase) ||
+                                            arg.Equals("--no-tui", StringComparison.OrdinalIgnoreCase));
+
+        if (command is not ("play-test" or "test-add") && !(command is "add" or "a" or "load" && nonInteractive))
+            return false;
+
+        var url = args
+            .Skip(1)
+            .FirstOrDefault(arg => !arg.StartsWith("-", StringComparison.Ordinal) && IsLikelyUrl(arg));
+
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            ConsoleHelper.Error("Usage: play-test <url> [--seconds 15] [--install-deps]");
+            options = options with { Url = string.Empty };
+            return true;
+        }
+
+        options = new NonInteractiveOptions(
+            url,
+            Seconds: ResolveSeconds(args),
+            InstallDependencies: args.Any(arg => arg.Equals("--install-deps", StringComparison.OrdinalIgnoreCase)));
+        return true;
+    }
+
+    private static int ResolveSeconds(string[] args)
+    {
+        for (var i = 0; i < args.Length; i++)
+        {
+            if (!args[i].Equals("--seconds", StringComparison.OrdinalIgnoreCase) &&
+                !args[i].Equals("-s", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (i + 1 < args.Length && int.TryParse(args[i + 1], out var seconds))
+                return Math.Clamp(seconds, 1, 3600);
+        }
+
+        return 15;
     }
 
     private static string? ResolveUrlArgument(string[] args, string rawInput)
@@ -183,4 +344,6 @@ internal static class Program
         Uri.TryCreate(value.Trim(), UriKind.Absolute, out var uri) &&
         (uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) ||
          uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase));
+
+    private sealed record NonInteractiveOptions(string Url, int Seconds, bool InstallDependencies);
 }

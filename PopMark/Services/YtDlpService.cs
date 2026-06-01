@@ -55,7 +55,7 @@ public sealed class YtDlpService
     {
         var startInfo = new ProcessStartInfo
         {
-            FileName = "yt-dlp",
+            FileName = ToolLocator.ResolveExecutable("yt-dlp") ?? "yt-dlp",
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,

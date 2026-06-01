@@ -13,6 +13,7 @@ public sealed class MpvPlayer
     private Process? _process;
     private string? _ipcName;
     private string? _ipcServerPath;
+    private int? _registeredProcessId;
     private bool _stopRequested;
 
     public event Func<Task>? PlaybackExited;
@@ -40,7 +41,7 @@ public sealed class MpvPlayer
 
         var startInfo = new ProcessStartInfo
         {
-            FileName = "mpv",
+            FileName = ToolLocator.ResolveExecutable("mpv") ?? "mpv",
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
@@ -65,7 +66,10 @@ public sealed class MpvPlayer
             {
                 _stopRequested = false;
                 _process = process;
+                _registeredProcessId = process.Id;
             }
+
+            PlaybackSessionStore.Register(process.Id, _ipcServerPath, track);
 
             _ = Task.Run(async () =>
             {
@@ -100,14 +104,20 @@ public sealed class MpvPlayer
     public async Task StopAsync(CancellationToken cancellationToken = default)
     {
         Process? process;
+        int? registeredProcessId;
         lock (_syncRoot)
         {
             _stopRequested = true;
             process = _process;
+            registeredProcessId = _registeredProcessId;
         }
 
         if (process is null || process.HasExited)
+        {
+            if (registeredProcessId.HasValue)
+                PlaybackSessionStore.Unregister(registeredProcessId.Value);
             return;
+        }
 
         try
         {
@@ -125,6 +135,9 @@ public sealed class MpvPlayer
             {
             }
         }
+
+        if (registeredProcessId.HasValue)
+            PlaybackSessionStore.Unregister(registeredProcessId.Value);
     }
 
     public void Detach()
@@ -135,6 +148,7 @@ public sealed class MpvPlayer
             _process = null;
             _ipcName = null;
             _ipcServerPath = null;
+            _registeredProcessId = null;
         }
     }
 
@@ -196,7 +210,10 @@ public sealed class MpvPlayer
             _process = null;
             _ipcName = null;
             _ipcServerPath = null;
+            _registeredProcessId = null;
         }
+
+        PlaybackSessionStore.Unregister(exitedProcess.Id);
 
         if (shouldNotify && PlaybackExited is not null)
             await PlaybackExited.Invoke();

@@ -83,12 +83,9 @@ public static class ConsoleHelper
     {
         TryClear();
 
-        var title = new FigletText("PopMark")
-            .Centered()
-            .Color(Color.Cornsilk1);
-
-        AnsiConsole.Write(title);
-        AnsiConsole.Write(BuildStatusPanel(snapshot, notice));
+        AnsiConsole.Write(BuildPlayerHeader(snapshot));
+        AnsiConsole.WriteLine();
+        AnsiConsole.Write(BuildNowPlayingPanel(snapshot, notice));
         AnsiConsole.WriteLine();
         AnsiConsole.Write(BuildQueueTable(snapshot));
         AnsiConsole.WriteLine();
@@ -96,13 +93,28 @@ public static class ConsoleHelper
         AnsiConsole.Write(new Rule().RuleStyle("grey"));
     }
 
-    public static string ReadReactiveInput(ref int lastWidth, ref int lastHeight, List<string> commandHistory)
+    public static string ReadReactiveInput(
+        ref int lastWidth,
+        ref int lastHeight,
+        List<string> commandHistory,
+        Func<PlayerSnapshot>? snapshotProvider = null,
+        Func<string>? noticeProvider = null)
     {
         var buffer = new StringBuilder();
         var historyIndex = commandHistory.Count;
         var browsingHistory = false;
         var draftInput = string.Empty;
+        var lastRefresh = DateTimeOffset.UtcNow;
         RenderPrompt(buffer.ToString());
+
+        void RefreshScreen()
+        {
+            if (snapshotProvider is null || noticeProvider is null)
+                return;
+
+            DrawCommandCenter(snapshotProvider(), noticeProvider());
+            RenderPrompt(buffer.ToString());
+        }
 
         void RedrawInputLine()
         {
@@ -124,11 +136,20 @@ public static class ConsoleHelper
 
             if (!Console.KeyAvailable)
             {
+                if ((DateTimeOffset.UtcNow - lastRefresh).TotalMilliseconds >= 180)
+                {
+                    lastRefresh = DateTimeOffset.UtcNow;
+                    RefreshScreen();
+                }
+
                 Thread.Sleep(40);
                 continue;
             }
 
             var key = Console.ReadKey(intercept: true);
+
+            if (key.Key == ConsoleKey.L && key.Modifiers.HasFlag(ConsoleModifiers.Control))
+                return "cls";
 
             if (key.Key == ConsoleKey.Enter)
             {
@@ -286,23 +307,43 @@ public static class ConsoleHelper
     public static void Error(string message) =>
         AnsiConsole.MarkupLine($"[red][[ERR]][/] {Markup.Escape(message)}");
 
-    private static IRenderable BuildStatusPanel(PlayerSnapshot snapshot, string notice)
+    private static IRenderable BuildPlayerHeader(PlayerSnapshot snapshot)
+    {
+        var title = new FigletText("PopMark")
+            .Centered()
+            .Color(Color.MediumPurple1);
+
+        var spinner = snapshot.Status switch
+        {
+            PlaybackStatus.Playing => SpinnerFrame("Playing"),
+            PlaybackStatus.Paused => "[yellow]Paused[/]",
+            PlaybackStatus.Loading => SpinnerFrame("Loading"),
+            _ => "[grey]Idle[/]"
+        };
+
+        return new Rows(
+            title,
+            Align.Center(new Markup($"{spinner} [grey]queue:[/] [white]{snapshot.Pending.Count}[/]")));
+    }
+
+    private static IRenderable BuildNowPlayingPanel(PlayerSnapshot snapshot, string notice)
     {
         var grid = new Grid()
-            .AddColumn(new GridColumn().Width(12))
+            .AddColumn(new GridColumn().Width(16))
             .AddColumn();
 
-        grid.AddRow("[grey]Status[/]", StatusMarkup(snapshot.Status));
-        grid.AddRow("[grey]Current[/]", snapshot.Current is null
-            ? "[grey]Nothing playing[/]"
-            : $"[white]{Markup.Escape(snapshot.Current.Title)}[/]");
-        grid.AddRow("[grey]Pending[/]", $"[white]{snapshot.Pending.Count} track(s)[/]");
-        grid.AddRow("[grey]Notice[/]", $"[silver]{Markup.Escape(notice)}[/]");
+        grid.AddRow("[grey]State[/]", StatusMarkup(snapshot.Status));
+        grid.AddRow("[grey]Track[/]", snapshot.Current is null
+            ? "[grey]Drop in a link with add <url>[/]"
+            : $"[bold white]{Markup.Escape(snapshot.Current.Title)}[/]");
+        grid.AddRow("[grey]Motion[/]", BuildEqualizer(snapshot.Status));
+        grid.AddRow("[grey]Message[/]", $"[silver]{Markup.Escape(notice)}[/]");
+        grid.AddRow("[grey]Controls[/]", "[mediumorchid1]add[/] [grey]|[/] [mediumorchid1]play/pause[/] [grey]|[/] [mediumorchid1]next[/] [grey]|[/] [mediumorchid1]cls[/] [grey]|[/] [mediumorchid1]q[/]");
 
         return new Panel(grid)
-            .Border(BoxBorder.Rounded)
-            .BorderStyle(new Style(Color.CadetBlue_1))
-            .Header("[bold pink1]Command Center[/]")
+            .Border(BoxBorder.Double)
+            .BorderStyle(new Style(Color.MediumPurple1))
+            .Header("[bold mediumorchid1]Now Playing[/]")
             .Expand();
     }
 
@@ -312,7 +353,7 @@ public static class ConsoleHelper
             .RoundedBorder()
             .BorderColor(Color.Grey50)
             .Expand()
-            .AddColumn(new TableColumn("[bold pink1]#[/]").Width(5))
+            .AddColumn(new TableColumn("[bold mediumorchid1]#[/]").Width(5))
             .AddColumn(new TableColumn("[bold]Track[/]"))
             .AddColumn(new TableColumn("[bold]Source[/]"));
 
@@ -342,16 +383,14 @@ public static class ConsoleHelper
         var table = new Table()
             .NoBorder()
             .Expand()
-            .AddColumn("[bold pink1]Command[/]")
+            .AddColumn("[bold mediumorchid1]Command[/]")
             .AddColumn("[bold]Action[/]")
-            .AddColumn("[bold pink1]Alias[/]");
+            .AddColumn("[bold mediumorchid1]Alias[/]");
 
-        table.AddRow("add <url>", "Load a YouTube video or playlist with yt-dlp", "a");
-        table.AddRow("pause / resume", "Pause or resume mpv playback", "p / r");
-        table.AddRow("toggle", "Toggle pause state", "t");
+        table.AddRow("add <url>", "Add a YouTube video or playlist", "a");
+        table.AddRow("play / pause", "Toggle playback", "r");
         table.AddRow("next", "Skip to the next queued track", "n");
-        table.AddRow("stop", "Stop playback and clear the queue", "s");
-        table.AddRow("detach", "Exit the TUI and leave mpv playing", "d");
+        table.AddRow("cls", "Clear and redraw the command center", "clear / Ctrl+L");
         table.AddRow("quit", "Stop playback and exit", "q");
 
         return table;
@@ -360,74 +399,103 @@ public static class ConsoleHelper
     private static string StatusMarkup(PlaybackStatus status) =>
         status switch
         {
-            PlaybackStatus.Playing => "[green]Playing[/]",
+            PlaybackStatus.Playing => $"{SpinnerFrame("Playing")}",
             PlaybackStatus.Paused => "[yellow]Paused[/]",
-            PlaybackStatus.Loading => "[cyan]Loading[/]",
+            PlaybackStatus.Loading => $"{SpinnerFrame("Loading")}",
             PlaybackStatus.Detached => "[blue]Detached[/]",
             _ => "[grey]Stopped[/]"
         };
 
+    private static string SpinnerFrame(string label)
+    {
+        var frames = new[] { "o", "O", "@", "O" };
+        var frame = frames[(Environment.TickCount64 / 160) % frames.Length];
+        return $"[springgreen1]{frame}[/] [white]{label}[/]";
+    }
+
+    private static string BuildEqualizer(PlaybackStatus status)
+    {
+        if (status == PlaybackStatus.Paused)
+            return "[yellow]▁ ▁ ▁ ▁ ▁ ▁ ▁ ▁[/]";
+
+        if (status is not (PlaybackStatus.Playing or PlaybackStatus.Loading))
+            return "[grey]▁ ▁ ▁ ▁ ▁ ▁ ▁ ▁[/]";
+
+        var bars = new[] { "▁", "▂", "▃", "▄", "▅", "▆", "▇" };
+        var offset = (int)((Environment.TickCount64 / 120) % bars.Length);
+        var output = Enumerable.Range(0, 12)
+            .Select(i => bars[(i + offset + (i % 3)) % bars.Length]);
+
+        return $"[springgreen1]{string.Join(' ', output)}[/]";
+    }
+
     private static void RenderPrompt(string input)
     {
-        AnsiConsole.Markup("[bold pink1]popmark[/][grey] >[/] ");
+        AnsiConsole.Markup("[bold mediumorchid1]popmark[/][grey] >[/] ");
         Console.Write(input);
     }
 
     private static IRenderable CreateSplashFrame(int frame)
     {
         var footer = new Rows(
-            Align.Center(new Markup("[bold pink1]PopMark[/] [silver]terminal music queue[/]")),
+            Align.Center(new Markup("[bold mediumorchid1]PopMark[/] [silver]terminal music queue[/]")),
             Align.Center(new Markup("[bold springgreen1]Press any key to continue[/]")));
 
         return new Rows(
             new Text(" "),
             new Text(" "),
-            Align.Center(CreateCatCanvas(frame)),
+            Align.Center(CreateCassetteCanvas(frame)),
             new Text(" "),
             footer);
     }
 
-    private static Canvas CreateCatCanvas(int frame)
+    private static Canvas CreateCassetteCanvas(int frame)
     {
-        const int width = 64;
+        const int width = 70;
         const int height = 24;
         var canvas = new Canvas(width, height);
-        var bob = Math.Sin(frame * 0.22) * 1.1;
-        var breathe = Math.Sin(frame * 0.15) * 0.7;
-        var bodyColor = frame % 28 < 14 ? Color.Cornsilk1 : Color.Grey70;
-        var accent = frame % 20 < 10 ? Color.Turquoise2 : Color.CadetBlue_1;
-        var blush = Color.CadetBlue_1;
+        var bob = Math.Sin(frame * 0.18) * 0.8;
+        var body = Color.MediumPurple1;
+        var label = Color.Cornsilk1;
+        var accent = frame % 18 < 9 ? Color.SpringGreen1 : Color.Turquoise2;
+        var dark = Color.Grey23;
 
-        DrawEllipse(canvas, 32, 14 + bob, 14.5 + breathe, 7.0, bodyColor);
-        DrawEllipse(canvas, 32, 7 + bob, 10.5, 5.7, bodyColor);
+        FillRect(canvas, 10, 5 + bob, 49, 15, body);
+        FillRect(canvas, 13, 8 + bob, 43, 5, label);
+        FillRect(canvas, 20, 16 + bob, 29, 3, dark);
 
-        DrawTriangle(canvas, 23, 5 + bob, 27, 1 + bob, 29, 6 + bob, bodyColor);
-        DrawTriangle(canvas, 35, 6 + bob, 38, 1 + bob, 42, 5 + bob, bodyColor);
-        DrawTriangle(canvas, 25, 5 + bob, 27, 3 + bob, 28, 6 + bob, accent);
-        DrawTriangle(canvas, 37, 6 + bob, 38, 3 + bob, 40, 5 + bob, accent);
+        DrawEllipse(canvas, 23, 14 + bob, 5.3, 3.3, dark);
+        DrawEllipse(canvas, 46, 14 + bob, 5.3, 3.3, dark);
+        DrawEllipse(canvas, 23, 14 + bob, 2.1, 1.2, accent);
+        DrawEllipse(canvas, 46, 14 + bob, 2.1, 1.2, accent);
 
-        DrawEllipse(canvas, 16, 14 + bob, 6.5, 2.5, bodyColor);
-        DrawEllipse(canvas, 13, 12 + bob, 3.0, 1.8, accent);
-        DrawEllipse(canvas, 27, 20 + bob, 3.3, 1.5, accent);
-        DrawEllipse(canvas, 37, 20 + bob, 3.3, 1.5, accent);
+        var spin = frame % 6;
+        DrawLine(canvas, 23, 14 + bob, 23 + Math.Cos(spin) * 4, 14 + bob + Math.Sin(spin) * 2, label);
+        DrawLine(canvas, 46, 14 + bob, 46 - Math.Cos(spin) * 4, 14 + bob - Math.Sin(spin) * 2, label);
 
-        DrawPixelBlock(canvas, 28, (int)Math.Round(7 + bob), Color.Grey35);
-        DrawPixelBlock(canvas, 36, (int)Math.Round(7 + bob), Color.Grey35);
-        DrawPixelBlock(canvas, 32, (int)Math.Round(9 + bob), Color.Grey35);
-        DrawPixelBlock(canvas, 29, (int)Math.Round(11 + bob), blush);
-        DrawPixelBlock(canvas, 38, (int)Math.Round(11 + bob), blush);
+        DrawPixelBlock(canvas, 30, (int)Math.Round(10 + bob), dark);
+        DrawPixelBlock(canvas, 39, (int)Math.Round(10 + bob), dark);
+        DrawLine(canvas, 33, 12 + bob, 36, 12 + bob, dark);
 
-        DrawLine(canvas, 20, 10 + bob, 27, 10 + bob, accent);
-        DrawLine(canvas, 20, 12 + bob, 27, 11 + bob, accent);
-        DrawLine(canvas, 44, 10 + bob, 37, 10 + bob, accent);
-        DrawLine(canvas, 44, 12 + bob, 37, 11 + bob, accent);
+        DrawLine(canvas, 5, 9 + bob, 9, 7 + bob, accent);
+        DrawLine(canvas, 61, 8 + bob, 66, 5 + bob, accent);
+        DrawLine(canvas, 61, 11 + bob, 67, 11 + bob, accent);
 
-        DrawTwinkle(canvas, frame, 9, 4, 0);
-        DrawTwinkle(canvas, frame, 52, 5, 3);
-        DrawTwinkle(canvas, frame, 10, 19, 5);
-        DrawTwinkle(canvas, frame, 54, 18, 1);
+        DrawTwinkle(canvas, frame, 7, 4, 0);
+        DrawTwinkle(canvas, frame, 63, 18, 3);
+        DrawTwinkle(canvas, frame, 35, 2, 5);
 
         return canvas;
+    }
+
+    private static void FillRect(Canvas canvas, int left, double top, int width, int height, Color color)
+    {
+        var topY = (int)Math.Round(top);
+        for (var y = topY; y < topY + height; y++)
+        {
+            for (var x = left; x < left + width; x++)
+                SafeSetPixel(canvas, x, y, color);
+        }
     }
 
     private static void DrawEllipse(Canvas canvas, double centerX, double centerY, double radiusX, double radiusY, Color color)

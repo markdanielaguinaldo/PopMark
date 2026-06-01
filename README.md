@@ -5,8 +5,15 @@ PopMark is a lightweight terminal music queue for YouTube links. Paste a video o
 ## Requirements
 
 - .NET 9 SDK
-- `yt-dlp` available on `PATH`
-- `mpv` available on `PATH`
+- `yt-dlp` and `mpv`
+
+PopMark can install `yt-dlp` and portable `mpv` locally without admin access:
+
+```powershell
+dotnet run --project .\PopMark\PopMark.csproj -- deps
+```
+
+Local tools are stored under `%LOCALAPPDATA%\PopMark\tools`.
 
 ## Run
 
@@ -20,11 +27,16 @@ You can also start by passing a URL:
 dotnet run --project .\PopMark\PopMark.csproj -- "https://www.youtube.com/watch?v=..."
 ```
 
+Run a non-interactive playback test:
+
+```powershell
+dotnet run --project .\PopMark\PopMark.csproj -- play-test "https://www.youtube.com/watch?v=..." --seconds 15
+```
+
 ## Commands
 
-- `add <url>` or `a <url>`: load a YouTube video or playlist into the queue
-- `pause` / `resume`: control playback
+- `add <url>`: add a YouTube video or playlist
+- `play` or `pause`: toggle playback
 - `next`: skip to the next track
-- `stop`: stop playback and clear the queue
-- `detach`: exit the TUI while handing the pending queue to mpv
+- `cls` or `clear`: clear and redraw the command center
 - `quit`: stop playback and exit

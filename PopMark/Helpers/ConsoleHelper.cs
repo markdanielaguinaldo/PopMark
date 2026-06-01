@@ -2,6 +2,7 @@ using PopMark.Models;
 using Spectre.Console;
 using Spectre.Console.Rendering;
 using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 using System.Text;
 
 namespace PopMark.Helpers;
@@ -10,6 +11,20 @@ public static class ConsoleHelper
 {
     private const int StdOutputHandle = -11;
     private const uint EnableVirtualTerminalProcessing = 0x0004;
+    private const int SwpNoZOrder = 0x0004;
+    private const int SwpNoActivate = 0x0010;
+    private const int MonitorDefaultToNearest = 0x00000002;
+    private const int MiniWidgetWidth = 46;
+    private const int MiniWidgetHeight = 9;
+    private const int MiniConsoleColumns = 52;
+    private const int MiniConsoleRows = 13;
+    private const string Accent = "deeppink1";
+    private const string Secondary = "cyan1";
+    private const string SuccessColor = "springgreen1";
+    private const string Muted = "grey58";
+    private const string Chrome = "grey23";
+    private const string PanelBorder = "deeppink1";
+    private static ConsoleWindowState? _savedWindowState;
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern nint GetStdHandle(int nStdHandle);
@@ -19,6 +34,21 @@ public static class ConsoleHelper
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool SetConsoleMode(nint hConsoleHandle, uint dwMode);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern nint GetConsoleWindow();
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool GetWindowRect(nint hWnd, out Rect lpRect);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetWindowPos(nint hWnd, nint hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern nint MonitorFromWindow(nint hwnd, uint dwFlags);
+
+    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+    private static extern bool GetMonitorInfo(nint hMonitor, ref MonitorInfo lpmi);
 
     public static void InitializeTerminalCapabilities()
     {
@@ -100,21 +130,53 @@ public static class ConsoleHelper
         var track = snapshot.Current?.Title
             ?? snapshot.Pending.FirstOrDefault()?.Title
             ?? "Queue is empty";
+        var (_, windowHeight) = GetWindowSize();
+        var topPadding = Math.Max(0, windowHeight - MiniWidgetHeight - 2);
+        var textWidth = MiniWidgetWidth - 12;
+        if (!Console.IsOutputRedirected && topPadding > 0)
+            Console.Write(new string('\n', topPadding));
 
         var body = new Rows(
-            Align.Center(new Markup("[bold mediumorchid1]PopMark[/]")),
+            Align.Center(new Markup($"[bold {Accent}]PopMark[/] [dim {Secondary}]// mini[/]")),
             Align.Center(new Markup(StatusMarkup(snapshot.Status))),
-            Align.Center(new Markup($"[white]{Markup.Escape(track)}[/]")),
+            Align.Center(new Markup($"[white]{Markup.Escape(TrimForWidget(track, textWidth))}[/]")),
             Align.Center(new Markup(BuildEqualizer(snapshot.Status))),
-            Align.Center(new Markup($"[grey]{Markup.Escape(notice)}[/]")),
-            Align.Center(new Markup("[mediumorchid1]add[/] [grey]|[/] [mediumorchid1]play/pause[/] [grey]|[/] [mediumorchid1]next[/] [grey]|[/] [mediumorchid1]mini[/] [grey]|[/] [mediumorchid1]q[/]")));
+            Align.Center(new Markup($"[{Muted}]{Markup.Escape(TrimForWidget(notice, textWidth))}[/]")),
+            Align.Center(new Markup($"[{Accent}]a[/] [{Muted}]+[/] [{Secondary}]r[/] [{Muted}]play[/] [{Secondary}]n[/] [{Muted}]next[/] [{Secondary}]m[/] [{Muted}]full[/] [{Accent}]q[/]")));
 
-        AnsiConsole.Write(new Panel(body)
+        var panel = new Panel(body)
             .Border(BoxBorder.Rounded)
-            .BorderStyle(new Style(Color.MediumPurple1))
-            .Header("[bold springgreen1]Mini Player[/]")
-            .Expand());
-        AnsiConsole.Write(new Rule().RuleStyle("grey"));
+            .BorderStyle(Style.Parse(PanelBorder))
+            .Header($"[bold {Secondary}]ON AIR[/]", Justify.Right)
+            .Padding(1, 0);
+
+        AnsiConsole.Write(Align.Right(panel));
+    }
+
+    public static void ConfigureMiniModeWindow(bool enabled)
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows) || Console.IsOutputRedirected)
+            return;
+
+        try
+        {
+            if (enabled)
+            {
+                _savedWindowState ??= CaptureConsoleWindowState();
+                TrySetConsoleSize(MiniConsoleColumns, MiniConsoleRows);
+                TryDockConsoleWindow(MiniConsoleColumns, MiniConsoleRows);
+                return;
+            }
+
+            if (_savedWindowState is not null)
+            {
+                RestoreConsoleWindowState(_savedWindowState.Value);
+                _savedWindowState = null;
+            }
+        }
+        catch
+        {
+        }
     }
 
     public static string ReadReactiveInput(
@@ -130,6 +192,7 @@ public static class ConsoleHelper
         var browsingHistory = false;
         var draftInput = string.Empty;
         var lastRefresh = DateTimeOffset.UtcNow;
+        var lastScreenSignature = BuildScreenSignature(snapshotProvider, noticeProvider, miniModeProvider);
         RenderPrompt(buffer.ToString());
 
         void RefreshScreen()
@@ -164,10 +227,15 @@ public static class ConsoleHelper
 
             if (!Console.KeyAvailable)
             {
-                if ((DateTimeOffset.UtcNow - lastRefresh).TotalMilliseconds >= 180)
+                if ((DateTimeOffset.UtcNow - lastRefresh).TotalMilliseconds >= 250)
                 {
                     lastRefresh = DateTimeOffset.UtcNow;
-                    RefreshScreen();
+                    var screenSignature = BuildScreenSignature(snapshotProvider, noticeProvider, miniModeProvider);
+                    if (!string.Equals(screenSignature, lastScreenSignature, StringComparison.Ordinal))
+                    {
+                        lastScreenSignature = screenSignature;
+                        RefreshScreen();
+                    }
                 }
 
                 Thread.Sleep(40);
@@ -339,19 +407,19 @@ public static class ConsoleHelper
     {
         var title = new FigletText("PopMark")
             .Centered()
-            .Color(Color.MediumPurple1);
+            .Color(Color.DeepPink1);
 
         var spinner = snapshot.Status switch
         {
             PlaybackStatus.Playing => SpinnerFrame("Playing"),
-            PlaybackStatus.Paused => "[yellow]Paused[/]",
+            PlaybackStatus.Paused => $"[{Accent}]Paused[/]",
             PlaybackStatus.Loading => SpinnerFrame("Loading"),
-            _ => "[grey]Idle[/]"
+            _ => $"[{Muted}]Idle[/]"
         };
 
         return new Rows(
             title,
-            Align.Center(new Markup($"{spinner} [grey]queue:[/] [white]{snapshot.Pending.Count}[/]")));
+            Align.Center(new Markup($"{spinner} [{Muted}]queue:[/] [white]{snapshot.Pending.Count}[/]")));
     }
 
     private static IRenderable BuildNowPlayingPanel(PlayerSnapshot snapshot, string notice)
@@ -360,18 +428,18 @@ public static class ConsoleHelper
             .AddColumn(new GridColumn().Width(16))
             .AddColumn();
 
-        grid.AddRow("[grey]State[/]", StatusMarkup(snapshot.Status));
-        grid.AddRow("[grey]Track[/]", snapshot.Current is null
-            ? "[grey]Drop in a link with add <url>[/]"
+        grid.AddRow($"[{Muted}]State[/]", StatusMarkup(snapshot.Status));
+        grid.AddRow($"[{Muted}]Track[/]", snapshot.Current is null
+            ? $"[{Muted}]Drop in a link with add <url>[/]"
             : $"[bold white]{Markup.Escape(snapshot.Current.Title)}[/]");
-        grid.AddRow("[grey]Motion[/]", BuildEqualizer(snapshot.Status));
-        grid.AddRow("[grey]Message[/]", $"[silver]{Markup.Escape(notice)}[/]");
-        grid.AddRow("[grey]Controls[/]", "[mediumorchid1]add[/] [grey]|[/] [mediumorchid1]play/pause[/] [grey]|[/] [mediumorchid1]next[/] [grey]|[/] [mediumorchid1]cls[/] [grey]|[/] [mediumorchid1]q[/]");
+        grid.AddRow($"[{Muted}]Motion[/]", BuildEqualizer(snapshot.Status));
+        grid.AddRow($"[{Muted}]Message[/]", $"[silver]{Markup.Escape(notice)}[/]");
+        grid.AddRow($"[{Muted}]Controls[/]", $"[{Accent}]add[/] [{Muted}]|[/] [{Secondary}]play/pause[/] [{Muted}]|[/] [{Secondary}]next[/] [{Muted}]|[/] [{Accent}]cls[/] [{Muted}]|[/] [{Accent}]q[/]");
 
         return new Panel(grid)
             .Border(BoxBorder.Double)
-            .BorderStyle(new Style(Color.MediumPurple1))
-            .Header("[bold mediumorchid1]Now Playing[/]")
+            .BorderStyle(Style.Parse(PanelBorder))
+            .Header($"[bold {Accent}]Now Playing[/]")
             .Expand();
     }
 
@@ -379,15 +447,15 @@ public static class ConsoleHelper
     {
         var table = new Table()
             .RoundedBorder()
-            .BorderColor(Color.Grey50)
+            .BorderColor(Color.DeepPink1)
             .Expand()
-            .AddColumn(new TableColumn("[bold mediumorchid1]#[/]").Width(5))
-            .AddColumn(new TableColumn("[bold]Track[/]"))
-            .AddColumn(new TableColumn("[bold]Source[/]"));
+            .AddColumn(new TableColumn($"[bold {Accent}]#[/]").Width(5))
+            .AddColumn(new TableColumn($"[bold {Secondary}]Track[/]"))
+            .AddColumn(new TableColumn($"[bold {Accent}]Source[/]"));
 
         if (snapshot.Current is not null)
         {
-            table.AddRow("[bold green]now[/]", Markup.Escape(snapshot.Current.Title), "[green]playing[/]");
+            table.AddRow($"[bold {SuccessColor}]now[/]", Markup.Escape(snapshot.Current.Title), $"[{SuccessColor}]playing[/]");
         }
 
         var index = 1;
@@ -398,10 +466,10 @@ public static class ConsoleHelper
         }
 
         if (snapshot.Current is null && snapshot.Pending.Count == 0)
-            table.AddRow("[grey]-[/]", "[grey]Queue is empty[/]", "[grey]add <url>[/]");
+            table.AddRow($"[{Muted}]-[/]", $"[{Muted}]Queue is empty[/]", $"[{Muted}]add <url>[/]");
 
         if (snapshot.Pending.Count > 12)
-            table.AddRow("[grey]...[/]", $"[grey]{snapshot.Pending.Count - 12} more track(s)[/]", "[grey]hidden[/]");
+            table.AddRow($"[{Muted}]...[/]", $"[{Muted}]{snapshot.Pending.Count - 12} more track(s)[/]", $"[{Muted}]hidden[/]");
 
         return table;
     }
@@ -411,9 +479,9 @@ public static class ConsoleHelper
         var table = new Table()
             .NoBorder()
             .Expand()
-            .AddColumn("[bold mediumorchid1]Command[/]")
-            .AddColumn("[bold]Action[/]")
-            .AddColumn("[bold mediumorchid1]Alias[/]");
+            .AddColumn($"[bold {Accent}]Command[/]")
+            .AddColumn($"[bold {Secondary}]Action[/]")
+            .AddColumn($"[bold {Accent}]Alias[/]");
 
         table.AddRow("add <url>", "Add a YouTube video or playlist", "a");
         table.AddRow("play / pause", "Toggle playback", "r");
@@ -429,46 +497,97 @@ public static class ConsoleHelper
         status switch
         {
             PlaybackStatus.Playing => $"{SpinnerFrame("Playing")}",
-            PlaybackStatus.Paused => "[yellow]Paused[/]",
+            PlaybackStatus.Paused => $"[{Accent}]Paused[/]",
             PlaybackStatus.Loading => $"{SpinnerFrame("Loading")}",
-            PlaybackStatus.Detached => "[blue]Detached[/]",
-            _ => "[grey]Stopped[/]"
+            PlaybackStatus.Detached => $"[{Secondary}]Detached[/]",
+            _ => $"[{Muted}]Stopped[/]"
         };
 
     private static string SpinnerFrame(string label)
     {
         var frames = new[] { "o", "O", "@", "O" };
         var frame = frames[(Environment.TickCount64 / 160) % frames.Length];
-        return $"[springgreen1]{frame}[/] [white]{label}[/]";
+        return $"[{SuccessColor}]{frame}[/] [white]{label}[/]";
     }
 
     private static string BuildEqualizer(PlaybackStatus status)
     {
         if (status == PlaybackStatus.Paused)
-            return "[yellow]▁ ▁ ▁ ▁ ▁ ▁ ▁ ▁[/]";
+            return $"[{Accent}]▁ ▁ ▁ ▁ ▁ ▁ ▁ ▁[/]";
 
         if (status is not (PlaybackStatus.Playing or PlaybackStatus.Loading))
-            return "[grey]▁ ▁ ▁ ▁ ▁ ▁ ▁ ▁[/]";
+            return $"[{Chrome}]▁ ▁ ▁ ▁ ▁ ▁ ▁ ▁[/]";
 
         var bars = new[] { "▁", "▂", "▃", "▄", "▅", "▆", "▇" };
         var offset = (int)((Environment.TickCount64 / 120) % bars.Length);
         var output = Enumerable.Range(0, 12)
             .Select(i => bars[(i + offset + (i % 3)) % bars.Length]);
 
-        return $"[springgreen1]{string.Join(' ', output)}[/]";
+        return $"[{SuccessColor}]{string.Join(' ', output)}[/]";
     }
 
     private static void RenderPrompt(string input)
     {
-        AnsiConsole.Markup("[bold mediumorchid1]popmark[/][grey] >[/] ");
+        AnsiConsole.Markup($"[bold {Accent}]popmark[/][{Muted}] >[/] ");
         Console.Write(input);
+    }
+
+    private static string? BuildScreenSignature(
+        Func<PlayerSnapshot>? snapshotProvider,
+        Func<string>? noticeProvider,
+        Func<bool>? miniModeProvider)
+    {
+        if (snapshotProvider is null || noticeProvider is null)
+            return null;
+
+        var snapshot = snapshotProvider();
+        var builder = new StringBuilder()
+            .Append(miniModeProvider?.Invoke() == true ? "mini" : "full")
+            .Append('|')
+            .Append(snapshot.Status)
+            .Append('|')
+            .Append(noticeProvider())
+            .Append('|');
+
+        AppendTrack(builder, snapshot.Current);
+
+        foreach (var track in snapshot.Pending)
+            AppendTrack(builder.Append('|'), track);
+
+        return builder.ToString();
+    }
+
+    private static void AppendTrack(StringBuilder builder, Track? track)
+    {
+        if (track is null)
+        {
+            builder.Append("<none>");
+            return;
+        }
+
+        builder
+            .Append(track.Title)
+            .Append('\u001f')
+            .Append(track.Url)
+            .Append('\u001f')
+            .Append(track.DisplaySource)
+            .Append('\u001f')
+            .Append(track.Duration);
+    }
+
+    private static string TrimForWidget(string value, int maxLength)
+    {
+        if (value.Length <= maxLength)
+            return value;
+
+        return maxLength <= 3 ? value[..maxLength] : $"{value[..(maxLength - 3)]}...";
     }
 
     private static IRenderable CreateSplashFrame(int frame)
     {
         var footer = new Rows(
-            Align.Center(new Markup("[bold mediumorchid1]PopMark[/] [silver]terminal music queue[/]")),
-            Align.Center(new Markup("[bold springgreen1]Press any key to continue[/]")));
+            Align.Center(new Markup($"[bold {Accent}]PopMark[/] [silver]terminal music queue[/]")),
+            Align.Center(new Markup($"[bold {SuccessColor}]Press any key to continue[/]")));
 
         return new Rows(
             new Text(" "),
@@ -480,39 +599,39 @@ public static class ConsoleHelper
 
     private static Canvas CreateCassetteCanvas(int frame)
     {
-        const int width = 70;
-        const int height = 24;
+        const int width = 52;
+        const int height = 18;
         var canvas = new Canvas(width, height);
-        var bob = Math.Sin(frame * 0.18) * 0.8;
-        var body = Color.MediumPurple1;
-        var label = Color.Cornsilk1;
-        var accent = frame % 18 < 9 ? Color.SpringGreen1 : Color.Turquoise2;
+        var bob = Math.Sin(frame * 0.18) * 0.55;
+        var body = Color.DeepPink1;
+        var label = Color.Grey93;
+        var accent = frame % 18 < 9 ? Color.SpringGreen1 : Color.Cyan1;
         var dark = Color.Grey23;
 
-        FillRect(canvas, 10, 5 + bob, 49, 15, body);
-        FillRect(canvas, 13, 8 + bob, 43, 5, label);
-        FillRect(canvas, 20, 16 + bob, 29, 3, dark);
+        FillRect(canvas, 7, 4 + bob, 38, 11, body);
+        FillRect(canvas, 10, 6 + bob, 32, 4, label);
+        FillRect(canvas, 16, 12 + bob, 23, 2, dark);
 
-        DrawEllipse(canvas, 23, 14 + bob, 5.3, 3.3, dark);
-        DrawEllipse(canvas, 46, 14 + bob, 5.3, 3.3, dark);
-        DrawEllipse(canvas, 23, 14 + bob, 2.1, 1.2, accent);
-        DrawEllipse(canvas, 46, 14 + bob, 2.1, 1.2, accent);
+        DrawEllipse(canvas, 19, 10 + bob, 4.0, 2.4, dark);
+        DrawEllipse(canvas, 34, 10 + bob, 4.0, 2.4, dark);
+        DrawEllipse(canvas, 19, 10 + bob, 1.6, 0.9, accent);
+        DrawEllipse(canvas, 34, 10 + bob, 1.6, 0.9, accent);
 
         var spin = frame % 6;
-        DrawLine(canvas, 23, 14 + bob, 23 + Math.Cos(spin) * 4, 14 + bob + Math.Sin(spin) * 2, label);
-        DrawLine(canvas, 46, 14 + bob, 46 - Math.Cos(spin) * 4, 14 + bob - Math.Sin(spin) * 2, label);
+        DrawLine(canvas, 19, 10 + bob, 19 + Math.Cos(spin) * 3, 10 + bob + Math.Sin(spin) * 1.5, label);
+        DrawLine(canvas, 34, 10 + bob, 34 - Math.Cos(spin) * 3, 10 + bob - Math.Sin(spin) * 1.5, label);
 
-        DrawPixelBlock(canvas, 30, (int)Math.Round(10 + bob), dark);
-        DrawPixelBlock(canvas, 39, (int)Math.Round(10 + bob), dark);
-        DrawLine(canvas, 33, 12 + bob, 36, 12 + bob, dark);
+        DrawPixelBlock(canvas, 24, (int)Math.Round(8 + bob), dark);
+        DrawPixelBlock(canvas, 29, (int)Math.Round(8 + bob), dark);
+        DrawLine(canvas, 26, 9 + bob, 28, 9 + bob, dark);
 
-        DrawLine(canvas, 5, 9 + bob, 9, 7 + bob, accent);
-        DrawLine(canvas, 61, 8 + bob, 66, 5 + bob, accent);
-        DrawLine(canvas, 61, 11 + bob, 67, 11 + bob, accent);
+        DrawLine(canvas, 3, 7 + bob, 6, 5 + bob, accent);
+        DrawLine(canvas, 46, 6 + bob, 50, 4 + bob, accent);
+        DrawLine(canvas, 46, 9 + bob, 50, 9 + bob, accent);
 
-        DrawTwinkle(canvas, frame, 7, 4, 0);
-        DrawTwinkle(canvas, frame, 63, 18, 3);
-        DrawTwinkle(canvas, frame, 35, 2, 5);
+        DrawTwinkle(canvas, frame, 4, 3, 0);
+        DrawTwinkle(canvas, frame, 47, 14, 3);
+        DrawTwinkle(canvas, frame, 27, 2, 5);
 
         return canvas;
     }
@@ -613,12 +732,88 @@ public static class ConsoleHelper
         canvas.SetPixel(x, y, color);
     }
 
+    [SupportedOSPlatform("windows")]
+    private static ConsoleWindowState? CaptureConsoleWindowState()
+    {
+        var handle = GetConsoleWindow();
+        if (handle == 0 || !GetWindowRect(handle, out var rect))
+            return null;
+
+        return new ConsoleWindowState(
+            handle,
+            rect,
+            Console.WindowWidth,
+            Console.WindowHeight,
+            Console.BufferWidth,
+            Console.BufferHeight);
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static void RestoreConsoleWindowState(ConsoleWindowState state)
+    {
+        TrySetConsoleSize(state.WindowColumns, state.WindowRows, state.BufferColumns, state.BufferRows);
+        var width = Math.Max(1, state.WindowRect.Right - state.WindowRect.Left);
+        var height = Math.Max(1, state.WindowRect.Bottom - state.WindowRect.Top);
+        _ = SetWindowPos(
+            state.Handle,
+            0,
+            state.WindowRect.Left,
+            state.WindowRect.Top,
+            width,
+            height,
+            SwpNoZOrder | SwpNoActivate);
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static void TrySetConsoleSize(int columns, int rows, int? bufferColumns = null, int? bufferRows = null)
+    {
+        try
+        {
+            columns = Math.Clamp(columns, 20, Console.LargestWindowWidth);
+            rows = Math.Clamp(rows, 8, Console.LargestWindowHeight);
+            Console.SetBufferSize(Math.Max(bufferColumns ?? columns, columns), Math.Max(bufferRows ?? rows, rows));
+            Console.SetWindowSize(columns, rows);
+        }
+        catch
+        {
+        }
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static void TryDockConsoleWindow(int columns, int rows)
+    {
+        var handle = GetConsoleWindow();
+        if (handle == 0 || !GetWindowRect(handle, out var currentRect))
+            return;
+
+        var monitor = MonitorFromWindow(handle, MonitorDefaultToNearest);
+        var monitorInfo = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
+        if (monitor == 0 || !GetMonitorInfo(monitor, ref monitorInfo))
+            return;
+
+        var currentWidth = Math.Max(1, currentRect.Right - currentRect.Left);
+        var currentHeight = Math.Max(1, currentRect.Bottom - currentRect.Top);
+        var currentColumns = Math.Max(1, Console.WindowWidth);
+        var currentRows = Math.Max(1, Console.WindowHeight);
+        var width = Math.Max(360, (int)Math.Round(currentWidth * (columns / (double)currentColumns)));
+        var height = Math.Max(190, (int)Math.Round(currentHeight * (rows / (double)currentRows)));
+        var workArea = monitorInfo.WorkArea;
+        var margin = 18;
+        var x = workArea.Right - width - margin;
+        var y = workArea.Bottom - height - margin;
+
+        _ = SetWindowPos(handle, 0, x, y, width, height, SwpNoZOrder | SwpNoActivate);
+    }
+
     private static void TryClear()
     {
         try
         {
             if (!Console.IsOutputRedirected)
+            {
                 Console.Write("\u001b[H\u001b[2J\u001b[3J");
+                return;
+            }
 
             AnsiConsole.Clear();
         }
@@ -627,4 +822,30 @@ public static class ConsoleHelper
             AnsiConsole.Clear();
         }
     }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private readonly struct Rect
+    {
+        public readonly int Left;
+        public readonly int Top;
+        public readonly int Right;
+        public readonly int Bottom;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+    private struct MonitorInfo
+    {
+        public int Size;
+        public Rect Monitor;
+        public Rect WorkArea;
+        public uint Flags;
+    }
+
+    private readonly record struct ConsoleWindowState(
+        nint Handle,
+        Rect WindowRect,
+        int WindowColumns,
+        int WindowRows,
+        int BufferColumns,
+        int BufferRows);
 }

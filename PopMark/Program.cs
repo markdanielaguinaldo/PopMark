@@ -19,13 +19,17 @@ internal static class Program
         var history = new List<string>();
         var notice = "Ready. Add a YouTube video or playlist URL to start.";
         var miniMode = false;
+        player.LastMessage = notice;
         player.SnapshotChanged += QueueCacheStore.Save;
 
         try
         {
             var clearedSessions = PlaybackSessionStore.CleanupStaleSessions();
             if (clearedSessions > 0)
+            {
                 notice = $"Cleared {clearedSessions} previous PopMark playback session(s).";
+                player.LastMessage = notice;
+            }
 
             if (args.Length > 0 && args[0].Equals("deps", StringComparison.OrdinalIgnoreCase))
                 return await RunDependencyInstallAsync(dependencies);
@@ -66,9 +70,9 @@ internal static class Program
             while (keepRunning)
             {
                 if (miniMode)
-                    ConsoleHelper.DrawMiniPlayer(player.CreateSnapshot(), notice);
+                    ConsoleHelper.DrawMiniPlayer(player.CreateSnapshot(), player.LastMessage);
                 else
-                    ConsoleHelper.DrawCommandCenter(player.CreateSnapshot(), notice);
+                    ConsoleHelper.DrawCommandCenter(player.CreateSnapshot(), player.LastMessage);
                 ConsoleHelper.UseBarCursor();
 
                 var input = ConsoleHelper.ReadReactiveInput(
@@ -76,11 +80,12 @@ internal static class Program
                     ref lastHeight,
                     history,
                     () => player.CreateSnapshot(),
-                    () => notice,
+                    () => player.LastMessage,
                     () => miniMode);
                 if (string.IsNullOrWhiteSpace(input))
                 {
                     notice = "Type help to list commands.";
+                    player.LastMessage = notice;
                     continue;
                 }
 
@@ -99,9 +104,11 @@ internal static class Program
                         () =>
                         {
                             miniMode = !miniMode;
+                            ConsoleHelper.ConfigureMiniModeWindow(miniMode);
                             player.LastMessage = miniMode ? "Mini mode enabled." : "Full player view enabled.";
                         });
                     notice = player.LastMessage;
+                    (lastWidth, lastHeight) = ConsoleHelper.GetWindowSize();
                 }
                 catch (Exception ex)
                 {
@@ -119,6 +126,7 @@ internal static class Program
         }
         finally
         {
+            ConsoleHelper.ConfigureMiniModeWindow(false);
             ConsoleHelper.ResetCursorStyle();
         }
     }

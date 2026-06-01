@@ -18,12 +18,12 @@ public static class ConsoleHelper
     private const int MiniWidgetHeight = 9;
     private const int MiniConsoleColumns = 52;
     private const int MiniConsoleRows = 13;
-    private const string Accent = "deeppink1";
+    private const string Accent = "deepskyblue1";
     private const string Secondary = "cyan1";
-    private const string SuccessColor = "springgreen1";
+    private const string SuccessColor = "turquoise2";
     private const string Muted = "grey58";
     private const string Chrome = "grey23";
-    private const string PanelBorder = "deeppink1";
+    private const string PanelBorder = "deepskyblue1";
     private static ConsoleWindowState? _savedWindowState;
 
     [DllImport("kernel32.dll", SetLastError = true)]
@@ -407,7 +407,7 @@ public static class ConsoleHelper
     {
         var title = new FigletText("PopMark")
             .Centered()
-            .Color(Color.DeepPink1);
+            .Color(Color.DeepSkyBlue1);
 
         var spinner = snapshot.Status switch
         {
@@ -447,7 +447,7 @@ public static class ConsoleHelper
     {
         var table = new Table()
             .RoundedBorder()
-            .BorderColor(Color.DeepPink1)
+            .BorderColor(Color.DeepSkyBlue1)
             .Expand()
             .AddColumn(new TableColumn($"[bold {Accent}]#[/]").Width(5))
             .AddColumn(new TableColumn($"[bold {Secondary}]Track[/]"))
@@ -554,6 +554,14 @@ public static class ConsoleHelper
         foreach (var track in snapshot.Pending)
             AppendTrack(builder.Append('|'), track);
 
+        var isMiniMode = miniModeProvider?.Invoke() == true;
+        if (isMiniMode && snapshot.Status is PlaybackStatus.Playing or PlaybackStatus.Loading)
+        {
+            builder
+                .Append("|anim:")
+                .Append(Environment.TickCount64 / 250);
+        }
+
         return builder.ToString();
     }
 
@@ -599,39 +607,39 @@ public static class ConsoleHelper
 
     private static Canvas CreateCassetteCanvas(int frame)
     {
-        const int width = 52;
-        const int height = 18;
+        const int width = 44;
+        const int height = 22;
         var canvas = new Canvas(width, height);
-        var bob = Math.Sin(frame * 0.18) * 0.55;
-        var body = Color.DeepPink1;
+        var bob = Math.Sin(frame * 0.18) * 0.65;
+        var body = Color.DeepSkyBlue1;
         var label = Color.Grey93;
-        var accent = frame % 18 < 9 ? Color.SpringGreen1 : Color.Cyan1;
+        var accent = frame % 18 < 9 ? Color.Turquoise2 : Color.Cyan1;
         var dark = Color.Grey23;
 
-        FillRect(canvas, 7, 4 + bob, 38, 11, body);
-        FillRect(canvas, 10, 6 + bob, 32, 4, label);
-        FillRect(canvas, 16, 12 + bob, 23, 2, dark);
+        FillRect(canvas, 6, 5 + bob, 32, 13, body);
+        FillRect(canvas, 8, 8 + bob, 28, 4, label);
+        FillRect(canvas, 13, 15 + bob, 20, 2, dark);
 
-        DrawEllipse(canvas, 19, 10 + bob, 4.0, 2.4, dark);
-        DrawEllipse(canvas, 34, 10 + bob, 4.0, 2.4, dark);
-        DrawEllipse(canvas, 19, 10 + bob, 1.6, 0.9, accent);
-        DrawEllipse(canvas, 34, 10 + bob, 1.6, 0.9, accent);
+        DrawEllipse(canvas, 16, 13 + bob, 3.7, 2.5, dark);
+        DrawEllipse(canvas, 29, 13 + bob, 3.7, 2.5, dark);
+        DrawEllipse(canvas, 16, 13 + bob, 1.4, 0.95, accent);
+        DrawEllipse(canvas, 29, 13 + bob, 1.4, 0.95, accent);
 
         var spin = frame % 6;
-        DrawLine(canvas, 19, 10 + bob, 19 + Math.Cos(spin) * 3, 10 + bob + Math.Sin(spin) * 1.5, label);
-        DrawLine(canvas, 34, 10 + bob, 34 - Math.Cos(spin) * 3, 10 + bob - Math.Sin(spin) * 1.5, label);
+        DrawLine(canvas, 16, 13 + bob, 16 + Math.Cos(spin) * 2.8, 13 + bob + Math.Sin(spin) * 1.6, label);
+        DrawLine(canvas, 29, 13 + bob, 29 - Math.Cos(spin) * 2.8, 13 + bob - Math.Sin(spin) * 1.6, label);
 
-        DrawPixelBlock(canvas, 24, (int)Math.Round(8 + bob), dark);
-        DrawPixelBlock(canvas, 29, (int)Math.Round(8 + bob), dark);
-        DrawLine(canvas, 26, 9 + bob, 28, 9 + bob, dark);
+        DrawPixelBlock(canvas, 20, (int)Math.Round(10 + bob), dark);
+        DrawPixelBlock(canvas, 25, (int)Math.Round(10 + bob), dark);
+        DrawLine(canvas, 22, 11 + bob, 24, 11 + bob, dark);
 
-        DrawLine(canvas, 3, 7 + bob, 6, 5 + bob, accent);
-        DrawLine(canvas, 46, 6 + bob, 50, 4 + bob, accent);
-        DrawLine(canvas, 46, 9 + bob, 50, 9 + bob, accent);
+        DrawLine(canvas, 2, 9 + bob, 5, 7 + bob, accent);
+        DrawLine(canvas, 39, 8 + bob, 42, 6 + bob, accent);
+        DrawLine(canvas, 39, 11 + bob, 42, 11 + bob, accent);
 
-        DrawTwinkle(canvas, frame, 4, 3, 0);
-        DrawTwinkle(canvas, frame, 47, 14, 3);
-        DrawTwinkle(canvas, frame, 27, 2, 5);
+        DrawTwinkle(canvas, frame, 4, 4, 0);
+        DrawTwinkle(canvas, frame, 39, 18, 3);
+        DrawTwinkle(canvas, frame, 23, 2, 5);
 
         return canvas;
     }
@@ -811,7 +819,7 @@ public static class ConsoleHelper
         {
             if (!Console.IsOutputRedirected)
             {
-                Console.Write("\u001b[H\u001b[2J\u001b[3J");
+                Console.Write("\u001b[H\u001b[J");
                 return;
             }
 

@@ -275,6 +275,29 @@ internal static class Program
         bool confirmInstallDependencies,
         bool showStatus)
     {
+        if (showStatus && dependencies.ArePlaybackDependenciesAvailable())
+        {
+            await AnsiConsole.Status()
+                .Spinner(Spinner.Known.BouncingBar)
+                .SpinnerStyle(Style.Parse("deepskyblue1"))
+                .StartAsync("Adding URL to queue...", async ctx =>
+                {
+                    ctx.Status("Checking playback tools...");
+                    var dependencyMessage = await dependencies.EnsurePlaybackDependenciesAsync(
+                        promptToInstall: promptToInstallDependencies,
+                        confirmInstall: confirmInstallDependencies);
+                    if (!dependencies.ArePlaybackDependenciesAvailable())
+                    {
+                        player.LastMessage = dependencyMessage;
+                        return;
+                    }
+
+                    ctx.Status("Loading YouTube metadata with yt-dlp...");
+                    await player.AddUrlAsync(url);
+                });
+            return;
+        }
+
         var dependencyMessage = await dependencies.EnsurePlaybackDependenciesAsync(
             promptToInstall: promptToInstallDependencies,
             confirmInstall: confirmInstallDependencies);
@@ -287,10 +310,11 @@ internal static class Program
         if (showStatus)
         {
             await AnsiConsole.Status()
-                .Spinner(Spinner.Known.Dots)
-                .SpinnerStyle(Style.Parse("pink1"))
-                .StartAsync("Loading YouTube metadata with yt-dlp...", async _ =>
+                .Spinner(Spinner.Known.BouncingBar)
+                .SpinnerStyle(Style.Parse("deepskyblue1"))
+                .StartAsync("Loading YouTube metadata with yt-dlp...", async ctx =>
                 {
+                    ctx.Status("Adding URL to queue...");
                     await player.AddUrlAsync(url);
                 });
             return;

@@ -219,13 +219,27 @@ internal static class Program
             case "next":
             case "skip":
             case "n":
-                await player.NextAsync();
+            case "]":
+                if (!TryResolveTrackStepCount(args, "next", out var nextCount, out var nextCountMessage))
+                {
+                    player.LastMessage = nextCountMessage;
+                    return false;
+                }
+
+                await player.NextAsync(nextCount);
                 return false;
 
             case "previous":
             case "prev":
             case "back":
-                await player.PreviousAsync();
+            case "[":
+                if (!TryResolveTrackStepCount(args, "prev", out var previousCount, out var previousCountMessage))
+                {
+                    player.LastMessage = previousCountMessage;
+                    return false;
+                }
+
+                await player.PreviousAsync(previousCount);
                 return false;
 
             case "__seek-forward":
@@ -471,6 +485,26 @@ internal static class Program
 
         var firstSpace = rawInput.IndexOf(' ');
         return firstSpace >= 0 ? rawInput[(firstSpace + 1)..].Trim() : null;
+    }
+
+    private static bool TryResolveTrackStepCount(string[] args, string commandName, out int count, out string message)
+    {
+        count = 1;
+        message = string.Empty;
+
+        if (args.Length == 1)
+            return true;
+
+        if (args.Length == 2 &&
+            int.TryParse(args[1], out count) &&
+            count > 0)
+        {
+            return true;
+        }
+
+        count = 1;
+        message = $"Usage: {commandName} [count], where count is 1 or more.";
+        return false;
     }
 
     private static int ResolveArrowSeekSeconds(string command)

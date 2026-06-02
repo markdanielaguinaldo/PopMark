@@ -156,23 +156,32 @@ public sealed class PlaybackQueue
         NotifySnapshotChanged();
     }
 
-    public async Task NextAsync(CancellationToken cancellationToken = default)
+    public Task NextAsync(CancellationToken cancellationToken = default) =>
+        NextAsync(1, cancellationToken);
+
+    public async Task NextAsync(int count, CancellationToken cancellationToken = default)
     {
+        count = Math.Max(1, count);
         Track? next;
+        var advanced = 0;
         lock (_syncRoot)
         {
-            if (_current is not null)
-                _previous.Push(_current);
+            next = _current;
+            for (var i = 0; i < count; i++)
+            {
+                if (_current is not null)
+                    _previous.Push(_current);
 
-            next = _pending.Count > 0 ? _pending.Dequeue() : null;
-            if (next is null)
-            {
-                _current = null;
-                _status = PlaybackStatus.Stopped;
-                ResetPositionLocked(startRunning: false);
-            }
-            else
-            {
+                next = _pending.Count > 0 ? _pending.Dequeue() : null;
+                advanced++;
+                if (next is null)
+                {
+                    _current = null;
+                    _status = PlaybackStatus.Stopped;
+                    ResetPositionLocked(startRunning: false);
+                    break;
+                }
+
                 _current = next;
                 _status = PlaybackStatus.Playing;
                 ResetPositionLocked(startRunning: true);
@@ -183,36 +192,56 @@ public sealed class PlaybackQueue
         {
             await _mpv.StopAsync(cancellationToken);
             LastMessage = "End of queue.";
+            NotifySnapshotChanged();
             return;
         }
 
         await _mpv.PlayAsync(next, cancellationToken);
-        LastMessage = $"Now playing: {next.Title}";
+        LastMessage = advanced == 1
+            ? $"Now playing: {next.Title}"
+            : $"Skipped {advanced} track(s). Now playing: {next.Title}";
         NotifySnapshotChanged();
     }
 
-    public async Task PreviousAsync(CancellationToken cancellationToken = default)
+    public Task PreviousAsync(CancellationToken cancellationToken = default) =>
+        PreviousAsync(1, cancellationToken);
+
+    public async Task PreviousAsync(int count, CancellationToken cancellationToken = default)
     {
+        count = Math.Max(1, count);
         Track? previous;
+        Track? target = null;
+        var moved = 0;
         lock (_syncRoot)
         {
-            previous = _previous.Count > 0 ? _previous.Pop() : null;
-            if (previous is null)
+            previous = _current;
+            for (var i = 0; i < count; i++)
             {
-                LastMessage = "No previous track.";
-                return;
+                previous = _previous.Count > 0 ? _previous.Pop() : null;
+                if (previous is null)
+                    break;
+
+                if (_current is not null)
+                    PrependPendingLocked(_current);
+
+                _current = previous;
+                _status = PlaybackStatus.Playing;
+                ResetPositionLocked(startRunning: true);
+                target = previous;
+                moved++;
             }
-
-            if (_current is not null)
-                PrependPendingLocked(_current);
-
-            _current = previous;
-            _status = PlaybackStatus.Playing;
-            ResetPositionLocked(startRunning: true);
         }
 
-        await _mpv.PlayAsync(previous, cancellationToken);
-        LastMessage = $"Returned to: {previous.Title}";
+        if (target is null || moved == 0)
+        {
+            LastMessage = "No previous track.";
+            return;
+        }
+
+        await _mpv.PlayAsync(target, cancellationToken);
+        LastMessage = moved == 1
+            ? $"Returned to: {target.Title}"
+            : $"Went back {moved} track(s): {target.Title}";
         NotifySnapshotChanged();
     }
 

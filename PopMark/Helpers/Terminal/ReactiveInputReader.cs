@@ -112,6 +112,12 @@ internal static class ReactiveInputReader
 
             if (buffer.Length == 0)
             {
+                if (key.KeyChar == ']')
+                    return ReturnWithSize("next", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
+
+                if (key.KeyChar == '[')
+                    return ReturnWithSize("previous", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
+
                 switch (key.Key)
                 {
                     case ConsoleKey.Spacebar:

@@ -85,6 +85,8 @@ internal static class Program
                     () => player.LastMessage,
                     () => miniMode,
                     () => showHelp);
+                ConsoleHelper.ShowCursor();
+
                 if (string.IsNullOrWhiteSpace(input))
                 {
                     notice = "Type help to list commands.";

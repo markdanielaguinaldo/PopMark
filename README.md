@@ -1,20 +1,34 @@
 # PopMark
 
-PopMark is a lightweight terminal music queue for YouTube links. Paste a video or playlist URL, let `yt-dlp` expand it, and stream audio through `mpv` without downloading music files locally.
+A small terminal music queue for YouTube videos and playlists.
+
+PopMark expands links with `yt-dlp`, streams audio through `mpv`, and keeps your queue available between launches.
+
+![PopMark terminal showcase](PopMark/Files/Popmark.gif)
+
+## Features
+
+- Add YouTube videos or playlists from the terminal
+- Stream through `mpv` without downloading music files
+- Restore the previous queue on launch
+- Toggle full and mini player views
+- Seek, skip, pause, resume, and clear the playlist
+- Install local playback tools without admin access
 
 ## Requirements
 
 - .NET 9 SDK
-- `yt-dlp` and `mpv`
+- `yt-dlp`
+- `mpv`
 
-PopMark can install `yt-dlp` and portable `mpv` locally without admin access:
+PopMark can install `yt-dlp` and portable `mpv` locally:
 
 ```powershell
 dotnet run --project .\PopMark\PopMark.csproj -- deps
 ```
 
-Local tools are stored under `%LOCALAPPDATA%\PopMark\tools`.
-Queue state is saved under `%LOCALAPPDATA%\PopMark\queue.json` so PopMark can restore your last queue on the next launch.
+Local tools are stored in `%LOCALAPPDATA%\PopMark\tools`.
+Queue state is stored in `%LOCALAPPDATA%\PopMark\queue.json`.
 
 ## Run
 
@@ -22,13 +36,13 @@ Queue state is saved under `%LOCALAPPDATA%\PopMark\queue.json` so PopMark can re
 dotnet run --project .\PopMark\PopMark.csproj
 ```
 
-You can also start by passing a URL:
+Start with a URL:
 
 ```powershell
 dotnet run --project .\PopMark\PopMark.csproj -- "https://www.youtube.com/watch?v=..."
 ```
 
-Run a non-interactive playback test:
+Run a short non-interactive playback test:
 
 ```powershell
 dotnet run --project .\PopMark\PopMark.csproj -- play-test "https://www.youtube.com/watch?v=..." --seconds 15
@@ -36,11 +50,13 @@ dotnet run --project .\PopMark\PopMark.csproj -- play-test "https://www.youtube.
 
 ## Commands
 
-- `add <url>`: add a YouTube video or playlist
-- `play` or `pause`: toggle playback
-- `next`: skip to the next track
-- `seek <seconds>`: fast forward or rewind, for example `seek 30` or `seek -30`
-- `clear playlist`: stop playback and empty the queue
-- `cls` or `clear`: clear and redraw the command center
-- `mini`: toggle compact player mode
-- `quit`: stop playback and exit
+| Command | Action |
+| --- | --- |
+| `add <url>` | Add a YouTube video or playlist |
+| `play` / `pause` | Toggle playback |
+| `next` | Skip to the next track |
+| `seek <seconds>` | Seek relative to the current position |
+| `clear playlist` | Stop playback and empty the queue |
+| `mini` | Toggle compact player mode |
+| `cls` / `clear` | Redraw the terminal UI |
+| `quit` | Stop playback and exit |

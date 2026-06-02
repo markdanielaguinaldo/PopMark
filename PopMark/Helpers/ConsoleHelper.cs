@@ -99,7 +99,7 @@ public static class ConsoleHelper
         if (Console.IsOutputRedirected || _usingAlternateScreen)
             return;
 
-        Console.Write("\u001b[?1049h\u001b[H\u001b[2J");
+        Console.Write("\u001b[?1049h\u001b[?25l\u001b[H\u001b[2J");
         _usingAlternateScreen = true;
         ResetFrameCache();
     }
@@ -110,7 +110,7 @@ public static class ConsoleHelper
             return;
 
         ResetFrameCache();
-        Console.Write("\u001b[?1049l");
+        Console.Write("\u001b[?25h\u001b[?1049l");
         _usingAlternateScreen = false;
     }
 
@@ -414,6 +414,7 @@ public static class ConsoleHelper
                                 _lastRenderedWidth != width ||
                                 _lastRenderedHeight != height;
         var output = new StringBuilder();
+        output.Append("\u001b[?25l");
         output.Append(requiresFullPaint ? "\u001b[H\u001b[2J" : "\u001b[H");
 
         for (var i = 0; i < lines.Count; i++)
@@ -837,7 +838,19 @@ public static class ConsoleHelper
         try
         {
             if (!Console.IsOutputRedirected)
-                Console.Write("\u001b[5 q");
+                Console.Write("\u001b[5 q\u001b[?25l");
+        }
+        catch
+        {
+        }
+    }
+
+    public static void ShowCursor()
+    {
+        try
+        {
+            if (!Console.IsOutputRedirected)
+                Console.Write("\u001b[?25h");
         }
         catch
         {
@@ -849,7 +862,7 @@ public static class ConsoleHelper
         try
         {
             if (!Console.IsOutputRedirected)
-                Console.Write("\u001b[0 q");
+                Console.Write("\u001b[?25h\u001b[0 q");
         }
         catch
         {

@@ -9,7 +9,7 @@ internal static class TerminalFrameRenderer
     private static int _lastRenderedWidth;
     private static int _lastRenderedHeight;
 
-    public static void DrawCommandCenter(PlayerSnapshot snapshot, string notice, bool showHelp = false)
+    public static void DrawCommandCenter(PlayerSnapshot snapshot, string notice, bool showHelp = false, int queueScrollOffset = 0)
     {
         var (width, height) = TerminalHost.GetWindowSize();
         Render(new RenderContext(
@@ -20,7 +20,8 @@ internal static class TerminalFrameRenderer
             Input: string.Empty,
             ShowHelp: showHelp,
             MiniMode: false,
-            AnimationFrame: 0),
+            AnimationFrame: 0,
+            QueueScrollOffset: queueScrollOffset),
             forceFullPaint: true);
     }
 
@@ -35,7 +36,8 @@ internal static class TerminalFrameRenderer
             Input: string.Empty,
             ShowHelp: false,
             MiniMode: true,
-            AnimationFrame: 0),
+            AnimationFrame: 0,
+            QueueScrollOffset: 0),
             forceFullPaint: true);
     }
 
@@ -130,7 +132,7 @@ internal static class TerminalFrameRenderer
                 : Math.Min(7, Math.Max(4, mainBudget / 2));
             var queueHeight = Math.Max(0, mainBudget - nowHeight);
             lines.AddRange(NowPlayingComponent(context, width, nowHeight));
-            lines.AddRange(QueueComponent(context.Snapshot, width, queueHeight));
+            lines.AddRange(QueueComponent(context.Snapshot, width, queueHeight, context.QueueScrollOffset));
         }
 
         if (playbackHeight > 0)
@@ -210,30 +212,54 @@ internal static class TerminalFrameRenderer
         return Box("Now Playing", rows, width, height, TerminalStyles.AnsiAccent);
     }
 
-    private static IReadOnlyList<string> QueueComponent(PlayerSnapshot snapshot, int width, int height)
+    private static IReadOnlyList<string> QueueComponent(PlayerSnapshot snapshot, int width, int height, int scrollOffset)
     {
         if (height <= 0)
             return [];
 
-        var rows = new List<string>();
-        if (snapshot.Current is not null)
-            rows.Add($"{TerminalStyles.AnsiAccent}> {TerminalText.TrimForWidget(snapshot.Current.Title, Math.Max(8, width - 10))}{TerminalStyles.Reset}");
+        var visibleRows = Math.Max(0, height - 2);
+        var playlist = BuildPlaylistRows(snapshot);
+        var maxOffset = Math.Max(0, playlist.Count - visibleRows);
+        var offset = Math.Clamp(scrollOffset, 0, maxOffset);
+        var rows = playlist
+            .Skip(offset)
+            .Take(visibleRows)
+            .ToList();
 
-        var availableTracks = Math.Max(0, height - 3 - rows.Count);
+        if (playlist.Count == 0)
+            rows.Add($"{TerminalStyles.AnsiMuted}Queue is empty{TerminalStyles.Reset}");
+
+        var title = playlist.Count > visibleRows && visibleRows > 0
+            ? $"Playlist {offset + 1}-{Math.Min(offset + visibleRows, playlist.Count)}/{playlist.Count}"
+            : "Playlist";
+
+        return Box(title, rows, width, height, TerminalStyles.AnsiChrome);
+    }
+
+    private static IReadOnlyList<string> BuildPlaylistRows(PlayerSnapshot snapshot)
+    {
+        var rows = new List<string>();
         var index = 1;
-        foreach (var track in snapshot.Pending.Take(availableTracks))
+
+        foreach (var track in snapshot.Previous)
         {
-            var color = index == 1 ? TerminalStyles.AnsiWhite : TerminalStyles.AnsiMuted;
-            rows.Add($"{color}{index,2}. {TerminalText.TrimForWidget(track.Title, Math.Max(8, width - 12))}{TerminalStyles.Reset}");
+            rows.Add($"{TerminalStyles.AnsiMuted}{index,2}. done  {track.Title}{TerminalStyles.Reset}");
             index++;
         }
 
-        if (snapshot.Pending.Count == 0 && snapshot.Current is not null)
-            rows.Add($"{TerminalStyles.AnsiMuted}End of queue{TerminalStyles.Reset}");
-        else if (snapshot.Pending.Count > availableTracks)
-            rows.Add($"{TerminalStyles.AnsiMuted}+ {snapshot.Pending.Count - availableTracks} more{TerminalStyles.Reset}");
+        if (snapshot.Current is not null)
+        {
+            rows.Add($"{TerminalStyles.AnsiAccent}{index,2}. >     {snapshot.Current.Title}{TerminalStyles.Reset}");
+            index++;
+        }
 
-        return Box("Queue", rows, width, height, TerminalStyles.AnsiChrome);
+        foreach (var track in snapshot.Pending)
+        {
+            rows.Add($"{TerminalStyles.AnsiWhite}{index,2}. next  {track.Title}{TerminalStyles.Reset}");
+            index++;
+        }
+
+        return rows;
     }
 
     private static IReadOnlyList<string> PlaybackStripComponent(RenderContext context, int width, int height)
@@ -263,7 +289,7 @@ internal static class TerminalFrameRenderer
         {
             return
             [
-                TerminalText.PadAnsiAware($"{TerminalStyles.AnsiMuted}SPACE{TerminalStyles.Reset} play/pause {TerminalStyles.AnsiChrome}|{TerminalStyles.Reset} {TerminalStyles.AnsiMuted}N/P{TerminalStyles.Reset} next/prev {TerminalStyles.AnsiChrome}|{TerminalStyles.Reset} {TerminalStyles.AnsiMuted}LEFT/RIGHT{TerminalStyles.Reset} seek {TerminalStyles.AnsiChrome}|{TerminalStyles.Reset} {TerminalStyles.AnsiMuted}clear playlist{TerminalStyles.Reset} {TerminalStyles.AnsiChrome}|{TerminalStyles.Reset} {TerminalStyles.AnsiMuted}M{TerminalStyles.Reset} mini {TerminalStyles.AnsiChrome}|{TerminalStyles.Reset} {TerminalStyles.AnsiMuted}Q{TerminalStyles.Reset} quit", width)
+                TerminalText.PadAnsiAware($"{TerminalStyles.AnsiMuted}SPACE{TerminalStyles.Reset} play/pause {TerminalStyles.AnsiChrome}|{TerminalStyles.Reset} {TerminalStyles.AnsiMuted}next/prev{TerminalStyles.Reset} tracks {TerminalStyles.AnsiChrome}|{TerminalStyles.Reset} {TerminalStyles.AnsiMuted}LEFT/RIGHT{TerminalStyles.Reset} +/-10s {TerminalStyles.AnsiChrome}|{TerminalStyles.Reset} {TerminalStyles.AnsiMuted}PGUP/PGDN{TerminalStyles.Reset} playlist {TerminalStyles.AnsiChrome}|{TerminalStyles.Reset} {TerminalStyles.AnsiMuted}mini{TerminalStyles.Reset} view {TerminalStyles.AnsiChrome}|{TerminalStyles.Reset} {TerminalStyles.AnsiMuted}quit{TerminalStyles.Reset}", width)
             ];
         }
 
@@ -272,12 +298,13 @@ internal static class TerminalFrameRenderer
             [
                 $"{TerminalStyles.AnsiAccent}add <url>{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}load a YouTube video or playlist{TerminalStyles.Reset}",
                 $"{TerminalStyles.AnsiAccent}play/pause{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}toggle playback{TerminalStyles.Reset}   {TerminalStyles.AnsiAccent}next/prev{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}skip or return a track{TerminalStyles.Reset}",
-                $"{TerminalStyles.AnsiAccent}LEFT/RIGHT arrows{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}seek by 10s, repeated taps add another 10s{TerminalStyles.Reset}",
+                $"{TerminalStyles.AnsiAccent}LEFT/RIGHT arrows{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}seek backward or forward by 10s{TerminalStyles.Reset}",
+                $"{TerminalStyles.AnsiAccent}PageUp/PageDown/Home/End{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}scroll the playlist panel{TerminalStyles.Reset}",
                 $"{TerminalStyles.AnsiAccent}clear playlist{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}stop playback and empty the queue{TerminalStyles.Reset}",
                 $"{TerminalStyles.AnsiAccent}mini{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}compact view{TerminalStyles.Reset}   {TerminalStyles.AnsiAccent}cls{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}redraw{TerminalStyles.Reset}   {TerminalStyles.AnsiAccent}q{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}quit{TerminalStyles.Reset}"
             ],
             width,
-            7,
+            8,
             TerminalStyles.AnsiChrome);
     }
 
@@ -471,7 +498,7 @@ internal static class TerminalFrameRenderer
     }
 
     private static int QueueCount(PlayerSnapshot snapshot) =>
-        snapshot.Pending.Count + (snapshot.Current is null ? 0 : 1);
+        snapshot.Previous.Count + snapshot.Pending.Count + (snapshot.Current is null ? 0 : 1);
 
     private static string FormatDuration(TimeSpan? duration)
     {

@@ -17,8 +17,8 @@ public static class ConsoleHelper
     public static void LeaveInteractiveScreen() =>
         TerminalHost.LeaveInteractiveScreen();
 
-    public static void DrawCommandCenter(PlayerSnapshot snapshot, string notice, bool showHelp = false) =>
-        TerminalFrameRenderer.DrawCommandCenter(snapshot, notice, showHelp);
+    public static void DrawCommandCenter(PlayerSnapshot snapshot, string notice, bool showHelp = false, int queueScrollOffset = 0) =>
+        TerminalFrameRenderer.DrawCommandCenter(snapshot, notice, showHelp, queueScrollOffset);
 
     public static void DrawMiniPlayer(PlayerSnapshot snapshot, string notice) =>
         TerminalFrameRenderer.DrawMiniPlayer(snapshot, notice);
@@ -30,7 +30,8 @@ public static class ConsoleHelper
         Func<PlayerSnapshot>? snapshotProvider = null,
         Func<string>? noticeProvider = null,
         Func<bool>? miniModeProvider = null,
-        Func<bool>? helpModeProvider = null) =>
+        Func<bool>? helpModeProvider = null,
+        Func<int>? queueScrollOffsetProvider = null) =>
         ReactiveInputReader.Read(
             ref lastWidth,
             ref lastHeight,
@@ -38,7 +39,8 @@ public static class ConsoleHelper
             snapshotProvider,
             noticeProvider,
             miniModeProvider,
-            helpModeProvider);
+            helpModeProvider,
+            queueScrollOffsetProvider);
 
     public static string[] SplitArgs(string commandLine) =>
         CommandLineParser.SplitArgs(commandLine);

@@ -10,4 +10,5 @@ internal sealed record RenderContext(
     string Input,
     bool ShowHelp,
     bool MiniMode,
-    int AnimationFrame);
+    int AnimationFrame,
+    int QueueScrollOffset);

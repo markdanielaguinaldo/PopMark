@@ -1,14 +1,11 @@
 using PopMark.Helpers;
+using PopMark.Models;
 using PopMark.Services;
 using Spectre.Console;
 
 internal static class Program
 {
     private const int ArrowSeekBaseSeconds = 10;
-    private static readonly TimeSpan ArrowSeekRepeatWindow = TimeSpan.FromMilliseconds(900);
-    private static DateTimeOffset _lastArrowSeekAt = DateTimeOffset.MinValue;
-    private static int _lastArrowSeekDirection;
-    private static int _arrowSeekRepeatCount;
 
     private static async Task<int> Main(string[] args)
     {
@@ -26,6 +23,7 @@ internal static class Program
         var notice = "Ready. Add a YouTube video or playlist URL to start.";
         var miniMode = false;
         var showHelp = false;
+        var queueScrollOffset = 0;
         player.LastMessage = notice;
         player.SnapshotChanged += QueueCacheStore.Save;
 
@@ -80,7 +78,7 @@ internal static class Program
                 if (miniMode)
                     ConsoleHelper.DrawMiniPlayer(player.CreateSnapshot(), player.LastMessage);
                 else
-                    ConsoleHelper.DrawCommandCenter(player.CreateSnapshot(), player.LastMessage, showHelp);
+                    ConsoleHelper.DrawCommandCenter(player.CreateSnapshot(), player.LastMessage, showHelp, queueScrollOffset);
                 ConsoleHelper.UseBarCursor();
 
                 var input = ConsoleHelper.ReadReactiveInput(
@@ -90,7 +88,8 @@ internal static class Program
                     () => player.CreateSnapshot(),
                     () => player.LastMessage,
                     () => miniMode,
-                    () => showHelp);
+                    () => showHelp,
+                    () => queueScrollOffset);
                 ConsoleHelper.ShowCursor();
 
                 if (string.IsNullOrWhiteSpace(input))
@@ -108,6 +107,14 @@ internal static class Program
 
                 try
                 {
+                    if (TryProcessQueueScrollCommand(parsedArgs[0], player.CreateSnapshot(), ref queueScrollOffset, out var scrollMessage))
+                    {
+                        player.LastMessage = scrollMessage;
+                        notice = scrollMessage;
+                        (lastWidth, lastHeight) = ConsoleHelper.GetWindowSize();
+                        continue;
+                    }
+
                     showHelp = parsedArgs[0].Equals("help", StringComparison.OrdinalIgnoreCase) ||
                                parsedArgs[0].Equals("h", StringComparison.OrdinalIgnoreCase) ||
                                parsedArgs[0].Equals("?", StringComparison.OrdinalIgnoreCase);
@@ -455,23 +462,45 @@ internal static class Program
     private static int ResolveArrowSeekSeconds(string command)
     {
         var direction = command.Equals("__seek-forward", StringComparison.OrdinalIgnoreCase) ? 1 : -1;
-        var now = DateTimeOffset.UtcNow;
-        if (_lastArrowSeekDirection == direction && now - _lastArrowSeekAt <= ArrowSeekRepeatWindow)
-        {
-            _arrowSeekRepeatCount++;
-        }
-        else
-        {
-            _arrowSeekRepeatCount = 1;
-        }
-
-        _lastArrowSeekDirection = direction;
-        _lastArrowSeekAt = now;
-        return direction * ArrowSeekBaseSeconds * _arrowSeekRepeatCount;
+        return direction * ArrowSeekBaseSeconds;
     }
 
     private static bool IsInternalCommand(string input) =>
         input.StartsWith("__", StringComparison.Ordinal);
+
+    private static bool TryProcessQueueScrollCommand(
+        string command,
+        PlayerSnapshot snapshot,
+        ref int queueScrollOffset,
+        out string message)
+    {
+        const int scrollStep = 5;
+        var totalTracks = snapshot.Previous.Count + snapshot.Pending.Count + (snapshot.Current is null ? 0 : 1);
+        var maxOffset = Math.Max(0, totalTracks - 1);
+
+        switch (command.ToLowerInvariant())
+        {
+            case "__queue-page-up":
+                queueScrollOffset = Math.Max(0, queueScrollOffset - scrollStep);
+                message = "Playlist scrolled up.";
+                return true;
+            case "__queue-page-down":
+                queueScrollOffset = Math.Min(maxOffset, queueScrollOffset + scrollStep);
+                message = "Playlist scrolled down.";
+                return true;
+            case "__queue-home":
+                queueScrollOffset = 0;
+                message = "Playlist scrolled to the top.";
+                return true;
+            case "__queue-end":
+                queueScrollOffset = maxOffset;
+                message = "Playlist scrolled to the bottom.";
+                return true;
+            default:
+                message = string.Empty;
+                return false;
+        }
+    }
 
     private static bool IsLikelyUrl(string value) =>
         Uri.TryCreate(value.Trim(), UriKind.Absolute, out var uri) &&

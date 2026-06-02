@@ -13,7 +13,8 @@ internal static class ReactiveInputReader
         Func<PlayerSnapshot>? snapshotProvider = null,
         Func<string>? noticeProvider = null,
         Func<bool>? miniModeProvider = null,
-        Func<bool>? helpModeProvider = null)
+        Func<bool>? helpModeProvider = null,
+        Func<int>? queueScrollOffsetProvider = null)
     {
         if (snapshotProvider is null || noticeProvider is null)
         {
@@ -49,7 +50,8 @@ internal static class ReactiveInputReader
                 buffer.ToString(),
                 helpModeProvider?.Invoke() == true,
                 miniModeProvider?.Invoke() == true,
-                animationFrame);
+                animationFrame,
+                queueScrollOffsetProvider?.Invoke() ?? 0);
             TerminalFrameRenderer.Render(context);
             lastRefresh = DateTimeOffset.UtcNow;
             lastScreenSignature = BuildScreenSignature(
@@ -109,18 +111,18 @@ internal static class ReactiveInputReader
                 {
                     case ConsoleKey.Spacebar:
                         return ReturnWithSize("play", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
-                    case ConsoleKey.N:
-                        return ReturnWithSize("next", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
-                    case ConsoleKey.P:
-                        return ReturnWithSize("previous", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
                     case ConsoleKey.RightArrow:
                         return ReturnWithSize("__seek-forward", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
                     case ConsoleKey.LeftArrow:
                         return ReturnWithSize("__seek-back", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
-                    case ConsoleKey.M:
-                        return ReturnWithSize("mini", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
-                    case ConsoleKey.Q:
-                        return ReturnWithSize("q", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
+                    case ConsoleKey.PageUp:
+                        return ReturnWithSize("__queue-page-up", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
+                    case ConsoleKey.PageDown:
+                        return ReturnWithSize("__queue-page-down", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
+                    case ConsoleKey.Home:
+                        return ReturnWithSize("__queue-home", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
+                    case ConsoleKey.End:
+                        return ReturnWithSize("__queue-end", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
                     case ConsoleKey.Oem2 when key.KeyChar == '?':
                         return ReturnWithSize("help", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
                 }
@@ -230,6 +232,9 @@ internal static class ReactiveInputReader
             .Append('|')
             .Append(includeElapsed ? snapshot.Elapsed?.TotalSeconds.ToString("0") : "static-input")
             .Append('|');
+
+        foreach (var track in snapshot.Previous)
+            AppendTrack(builder.Append('|'), track);
 
         AppendTrack(builder, snapshot.Current);
 

@@ -317,7 +317,7 @@ public sealed class PlaybackQueue
     {
         lock (_syncRoot)
         {
-            return new PlayerSnapshot(_status, _current, _pending.ToList(), ResolveElapsedLocked());
+            return new PlayerSnapshot(_status, _current, _pending.ToList(), _previous.Reverse().ToList(), ResolveElapsedLocked());
         }
     }
 

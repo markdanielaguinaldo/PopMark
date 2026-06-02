@@ -57,7 +57,7 @@ internal static class StartupSplash
         var glow = frame % 10 < 5 ? Color.Cyan1 : Color.Turquoise2;
         var panel = Color.Grey93;
         var dark = Color.Grey15;
-        var shadow = Color.Grey27;
+        var shadow = Color.CadetBlue;
         var bob = frame % 18 < 9 ? 0 : 1;
 
         DrawSpark(canvas, 7, 4, frame, 0, accent);
@@ -72,10 +72,10 @@ internal static class StartupSplash
         DrawMusicNote(canvas, 67, 11, accent);
         DrawEqualizer(canvas, 17, 23, frame, accent);
         DrawEqualizer(canvas, 67, 23, frame + 3, accent);
-        DrawWaveFloor(canvas, 29, 26, frame, accent, shadow);
+        DrawWaveFloor(canvas, 29, 26, frame, accent);
 
-        DrawRobot(canvas, 34, 12 + bob, frame, accent, glow, panel, dark, shadow);
-        DrawLoadingDots(canvas, 33, 29, frame, accent, shadow);
+        DrawRobot(canvas, 34, 12 + bob, frame, accent, glow, panel, dark);
+        DrawLoadingDots(canvas, 33, 29, frame, accent);
 
         return canvas;
     }
@@ -94,7 +94,7 @@ internal static class StartupSplash
         FillRect(canvas, left + 2, top + height, width - 4, 1, shadow);
     }
 
-    private static void DrawRobot(Canvas canvas, int left, int top, int frame, Color accent, Color glow, Color panel, Color dark, Color shadow)
+    private static void DrawRobot(Canvas canvas, int left, int top, int frame, Color accent, Color glow, Color panel, Color dark)
     {
         FillRect(canvas, left + 15, top - 5, 2, 5, accent);
         FillRect(canvas, left + 8, top - 2, 18, 2, accent);
@@ -107,8 +107,8 @@ internal static class StartupSplash
 
         FillRect(canvas, left + 9, top + 1, 16, 10, panel);
         FillRect(canvas, left + 11, top + 3, 12, 6, dark);
-        FillRect(canvas, left + 13, top + 5, 2, 2, glow);
-        FillRect(canvas, left + 19, top + 5, 2, 2, glow);
+        FillRect(canvas, left + 14, top + 5, 2, 2, glow);
+        FillRect(canvas, left + 20, top + 5, 2, 2, glow);
         FillRect(canvas, left + 10, top + 2, 14, 1, Color.White);
         FillRect(canvas, left + 10, top + 10, 14, 1, Color.Grey70);
 
@@ -117,15 +117,10 @@ internal static class StartupSplash
         FillRect(canvas, left + 18, top + 12, 2, 2, panel);
         FillRect(canvas, left + 13, top + 15, 8, 1, accent);
 
-        FillRect(canvas, left + 3, top + 17, 10, 2, shadow);
-        FillRect(canvas, left + 21, top + 17, 10, 2, shadow);
-        FillRect(canvas, left + 6, top + 16, 4, 2, dark);
-        FillRect(canvas, left + 24, top + 16, 4, 2, dark);
-        if (frame % 12 < 6)
-        {
-            FillRect(canvas, left + 7, top + 16, 2, 1, accent);
-            FillRect(canvas, left + 25, top + 16, 2, 1, accent);
-        }
+        FillRect(canvas, left + 8, top + 16, 16, 1, accent);
+        FillRect(canvas, left + 7, top + 17, 18, 2, dark);
+        FillRect(canvas, left + 9, top + 17, 14, 1, Color.DeepSkyBlue1);
+        FillRect(canvas, left + 13, top + 16, 6, 1, Color.CadetBlue);
     }
 
     private static void DrawEqualizer(Canvas canvas, int left, int bottom, int frame, Color accent)
@@ -137,19 +132,19 @@ internal static class StartupSplash
         }
     }
 
-    private static void DrawWaveFloor(Canvas canvas, int left, int y, int frame, Color accent, Color shadow)
+    private static void DrawWaveFloor(Canvas canvas, int left, int y, int frame, Color accent)
     {
         for (var i = 0; i < 34; i++)
         {
             var active = (i + frame / 2) % 5 == 0;
-            SafeSetPixel(canvas, left + i, y + (active ? 0 : 1), active ? accent : shadow);
+            SafeSetPixel(canvas, left + i, y + (active ? 0 : 1), active ? accent : Color.DeepSkyBlue1);
         }
     }
 
-    private static void DrawLoadingDots(Canvas canvas, int left, int y, int frame, Color accent, Color shadow)
+    private static void DrawLoadingDots(Canvas canvas, int left, int y, int frame, Color accent)
     {
         for (var i = 0; i < 24; i++)
-            SafeSetPixel(canvas, left + i, y, i < (frame % 24) ? accent : shadow);
+            SafeSetPixel(canvas, left + i, y, i < (frame % 24) ? accent : Color.DeepSkyBlue1);
     }
 
     private static void DrawMusicNote(Canvas canvas, int x, int y, Color color)

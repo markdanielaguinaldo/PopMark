@@ -4,6 +4,10 @@ namespace PopMark.Services;
 
 public sealed class PlaybackQueue
 {
+    private const int MinVolumePercent = 0;
+    private const int MaxVolumePercent = 130;
+    private const int DefaultVolumePercent = 100;
+
     private readonly YtDlpService _ytDlp;
     private readonly MpvPlayer _mpv;
     private readonly Queue<Track> _pending = new();
@@ -13,6 +17,7 @@ public sealed class PlaybackQueue
     private PlaybackStatus _status = PlaybackStatus.Stopped;
     private TimeSpan _positionOffset = TimeSpan.Zero;
     private DateTimeOffset? _positionStartedAt;
+    private int _volumePercent = DefaultVolumePercent;
 
     public event Action<PlayerSnapshot>? SnapshotChanged;
 
@@ -62,6 +67,7 @@ public sealed class PlaybackQueue
             _previous.Clear();
             _current = snapshot.Current;
             _status = PlaybackStatus.Stopped;
+            _volumePercent = ClampVolume(snapshot.VolumePercent);
 
             foreach (var track in snapshot.Previous)
                 _previous.Push(track);
@@ -167,9 +173,11 @@ public sealed class PlaybackQueue
     {
         count = Math.Max(1, count);
         Track? next;
+        int volumePercent;
         var advanced = 0;
         lock (_syncRoot)
         {
+            volumePercent = _volumePercent;
             next = _current;
             for (var i = 0; i < count; i++)
             {
@@ -200,7 +208,7 @@ public sealed class PlaybackQueue
             return;
         }
 
-        await _mpv.PlayAsync(next, cancellationToken);
+        await _mpv.PlayAsync(next, volumePercent, cancellationToken);
         LastMessage = advanced == 1
             ? $"Now playing: {next.Title}"
             : $"Skipped {advanced} track(s). Now playing: {next.Title}";
@@ -215,9 +223,11 @@ public sealed class PlaybackQueue
         count = Math.Max(1, count);
         Track? previous;
         Track? target = null;
+        int volumePercent;
         var moved = 0;
         lock (_syncRoot)
         {
+            volumePercent = _volumePercent;
             previous = _current;
             for (var i = 0; i < count; i++)
             {
@@ -242,7 +252,7 @@ public sealed class PlaybackQueue
             return;
         }
 
-        await _mpv.PlayAsync(target, cancellationToken);
+        await _mpv.PlayAsync(target, volumePercent, cancellationToken);
         LastMessage = moved == 1
             ? $"Returned to: {target.Title}"
             : $"Went back {moved} track(s): {target.Title}";
@@ -293,6 +303,34 @@ public sealed class PlaybackQueue
         }
 
         LastMessage = $"Jumped to {FormatDuration(target)}.";
+        NotifySnapshotChanged();
+    }
+
+    public async Task AdjustVolumeAsync(int percentDelta, CancellationToken cancellationToken = default)
+    {
+        int targetVolume;
+        bool applyToActivePlayer;
+        lock (_syncRoot)
+        {
+            targetVolume = ClampVolume(_volumePercent + percentDelta);
+            applyToActivePlayer = _current is not null &&
+                                  _status is (PlaybackStatus.Playing or PlaybackStatus.Paused);
+        }
+
+        if (applyToActivePlayer)
+            await _mpv.SetVolumeAsync(targetVolume, cancellationToken);
+
+        lock (_syncRoot)
+        {
+            _volumePercent = targetVolume;
+        }
+
+        LastMessage = targetVolume switch
+        {
+            MinVolumePercent => $"Volume {targetVolume}% (muted).",
+            MaxVolumePercent => $"Volume {targetVolume}% (max).",
+            _ => $"Volume {targetVolume}%."
+        };
         NotifySnapshotChanged();
     }
 
@@ -375,34 +413,38 @@ public sealed class PlaybackQueue
     {
         lock (_syncRoot)
         {
-            return new PlayerSnapshot(_status, _current, _pending.ToList(), _previous.Reverse().ToList(), ResolveElapsedLocked());
+            return new PlayerSnapshot(_status, _current, _pending.ToList(), _previous.Reverse().ToList(), ResolveElapsedLocked(), _volumePercent);
         }
     }
 
     private async Task StartNextIfIdleAsync(CancellationToken cancellationToken)
     {
         Track? next = null;
+        int volumePercent;
 
         lock (_syncRoot)
         {
             if (_current is not null || _pending.Count == 0)
                 return;
 
+            volumePercent = _volumePercent;
             next = _pending.Dequeue();
             _current = next;
             _status = PlaybackStatus.Playing;
             ResetPositionLocked(startRunning: true);
         }
 
-        await _mpv.PlayAsync(next, cancellationToken);
+        await _mpv.PlayAsync(next, volumePercent, cancellationToken);
         LastMessage = $"Now playing: {next.Title}";
     }
 
     private async Task AdvanceAfterTrackExitAsync()
     {
         Track? next = null;
+        int volumePercent;
         lock (_syncRoot)
         {
+            volumePercent = _volumePercent;
             if (_pending.Count > 0)
             {
                 if (_current is not null)
@@ -431,7 +473,7 @@ public sealed class PlaybackQueue
 
         try
         {
-            await _mpv.PlayAsync(next);
+            await _mpv.PlayAsync(next, volumePercent);
             LastMessage = $"Now playing: {next.Title}";
             NotifySnapshotChanged();
         }
@@ -501,4 +543,7 @@ public sealed class PlaybackQueue
         duration.TotalHours >= 1
             ? duration.ToString(@"h\:mm\:ss")
             : duration.ToString(@"m\:ss");
+
+    private static int ClampVolume(int volumePercent) =>
+        Math.Clamp(volumePercent, MinVolumePercent, MaxVolumePercent);
 }

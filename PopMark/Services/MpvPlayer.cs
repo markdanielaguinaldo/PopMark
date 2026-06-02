@@ -15,6 +15,8 @@ public sealed class MpvPlayer
     private string? _ipcServerPath;
     private int? _registeredProcessId;
     private bool _stopRequested;
+    private const int MinVolumePercent = 0;
+    private const int MaxVolumePercent = 130;
 
     public event Func<Task>? PlaybackExited;
 
@@ -29,7 +31,10 @@ public sealed class MpvPlayer
         }
     }
 
-    public async Task PlayAsync(Track track, CancellationToken cancellationToken = default)
+    public Task PlayAsync(Track track, CancellationToken cancellationToken = default) =>
+        PlayAsync(track, 100, cancellationToken);
+
+    public async Task PlayAsync(Track track, int volumePercent, CancellationToken cancellationToken = default)
     {
         await StopAsync(cancellationToken);
 
@@ -51,6 +56,8 @@ public sealed class MpvPlayer
         startInfo.ArgumentList.Add("--no-video");
         startInfo.ArgumentList.Add("--force-window=no");
         startInfo.ArgumentList.Add("--really-quiet");
+        startInfo.ArgumentList.Add($"--volume-max={MaxVolumePercent}");
+        startInfo.ArgumentList.Add($"--volume={Math.Clamp(volumePercent, MinVolumePercent, MaxVolumePercent)}");
         startInfo.ArgumentList.Add($"--input-ipc-server={_ipcServerPath}");
         startInfo.ArgumentList.Add(track.Url);
 
@@ -106,6 +113,12 @@ public sealed class MpvPlayer
 
     public Task SeekAbsoluteAsync(TimeSpan timestamp, CancellationToken cancellationToken = default) =>
         SendCommandAsync(["seek", timestamp.TotalSeconds, "absolute"], cancellationToken);
+
+    public Task AdjustVolumeAsync(int percentDelta, CancellationToken cancellationToken = default) =>
+        SendCommandAsync(["add", "volume", percentDelta], cancellationToken);
+
+    public Task SetVolumeAsync(int percent, CancellationToken cancellationToken = default) =>
+        SendCommandAsync(["set_property", "volume", Math.Clamp(percent, MinVolumePercent, MaxVolumePercent)], cancellationToken);
 
     public async Task StopAsync(CancellationToken cancellationToken = default)
     {

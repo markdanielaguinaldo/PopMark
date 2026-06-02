@@ -79,6 +79,7 @@ dotnet run --project .\PopMark\PopMark.csproj -- play-test "https://www.youtube.
 | --- | --- |
 | `Space` | Toggle playback when the command field is empty |
 | `[` / `]` | Previous or next track. Repeat quickly to jump multiple tracks. |
+| `-` / `=` | Decrease or increase volume by 10% |
 | `Left Arrow` / `Right Arrow` | Seek backward or forward by 10 seconds |
 | `Up Arrow` / `Down Arrow` / mouse wheel | Scroll the playlist panel by one row |
 | `PageUp` / `PageDown` | Scroll the playlist panel faster |

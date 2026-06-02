@@ -129,6 +129,12 @@ internal static class ReactiveInputReader
                 if (key.KeyChar == '[')
                     return ReturnWithSize(ResolveRepeatedBracketShortcut('[', "previous"), ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
 
+                if (key.KeyChar == '-')
+                    return ReturnWithSize("__volume-down", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
+
+                if (key.KeyChar == '=')
+                    return ReturnWithSize("__volume-up", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
+
                 switch (key.Key)
                 {
                     case ConsoleKey.RightArrow:

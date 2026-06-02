@@ -33,7 +33,8 @@ public static class QueueCacheStore
                 PlaybackStatus.Stopped,
                 cache.Current,
                 cache.Pending ?? [],
-                cache.Previous ?? []);
+                cache.Previous ?? [],
+                VolumePercent: Math.Clamp(cache.VolumePercent ?? 100, 0, 130));
         }
         catch
         {
@@ -49,7 +50,8 @@ public static class QueueCacheStore
             var cache = new QueueCache(
                 snapshot.Current,
                 snapshot.Pending.ToList(),
-                snapshot.Previous.ToList());
+                snapshot.Previous.ToList(),
+                snapshot.VolumePercent);
             File.WriteAllText(CacheFilePath, JsonSerializer.Serialize(cache, JsonOptions));
         }
         catch
@@ -69,5 +71,9 @@ public static class QueueCacheStore
         }
     }
 
-    private sealed record QueueCache(Track? Current, List<Track>? Pending, List<Track>? Previous);
+    private sealed record QueueCache(
+        Track? Current,
+        List<Track>? Pending,
+        List<Track>? Previous,
+        int? VolumePercent);
 }

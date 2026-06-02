@@ -6,6 +6,7 @@ using Spectre.Console;
 internal static class Program
 {
     private const int ArrowSeekBaseSeconds = 10;
+    private const int VolumeStepPercent = 10;
 
     private static async Task<int> Main(string[] args)
     {
@@ -138,6 +139,14 @@ internal static class Program
                     if (IsSeekCommand(parsedArgs[0]))
                     {
                         await player.SeekRelativeAsync(ResolveArrowSeekSeconds(parsedArgs[0]));
+                        notice = player.LastMessage;
+                        (lastWidth, lastHeight) = ConsoleHelper.GetWindowSize();
+                        continue;
+                    }
+
+                    if (IsVolumeCommand(parsedArgs[0]))
+                    {
+                        await player.AdjustVolumeAsync(ResolveVolumeStepPercent(parsedArgs[0]));
                         notice = player.LastMessage;
                         (lastWidth, lastHeight) = ConsoleHelper.GetWindowSize();
                         continue;
@@ -486,6 +495,15 @@ internal static class Program
     private static bool IsSeekCommand(string command) =>
         command.Equals("__seek-forward", StringComparison.OrdinalIgnoreCase) ||
         command.Equals("__seek-back", StringComparison.OrdinalIgnoreCase);
+
+    private static int ResolveVolumeStepPercent(string command) =>
+        command.Equals("__volume-up", StringComparison.OrdinalIgnoreCase)
+            ? VolumeStepPercent
+            : -VolumeStepPercent;
+
+    private static bool IsVolumeCommand(string command) =>
+        command.Equals("__volume-up", StringComparison.OrdinalIgnoreCase) ||
+        command.Equals("__volume-down", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsInternalCommand(string input) =>
         input.StartsWith("__", StringComparison.Ordinal);

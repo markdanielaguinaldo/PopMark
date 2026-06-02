@@ -306,11 +306,11 @@ internal static class TerminalFrameRenderer
             return [];
 
         var contentWidth = Math.Max(8, width - 6);
-        var time = $"{FormatDuration(context.Snapshot.Elapsed)} / {FormatDuration(context.Snapshot.Current?.Duration)}";
-        var progressWidth = Math.Max(8, contentWidth - TerminalText.VisibleLength(time) - 3);
+        var metrics = PlaybackMetrics(context.Snapshot);
+        var progressWidth = Math.Max(8, contentWidth - TerminalText.VisibleLength(metrics) - 3);
         var rows = new List<string>
         {
-            $"{ProgressBar(ProgressRatio(context.Snapshot), progressWidth)} {TerminalStyles.AnsiMuted}{time}{TerminalStyles.Reset}"
+            $"{ProgressBar(ProgressRatio(context.Snapshot), progressWidth)} {metrics}"
         };
 
         if (height >= 5)
@@ -342,11 +342,12 @@ internal static class TerminalFrameRenderer
                     $"{TerminalStyles.AnsiAccent}PageUp / PageDown{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}scroll playlist faster{TerminalStyles.Reset}",
                     $"{TerminalStyles.AnsiAccent}Home / End{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}jump to top or bottom of playlist{TerminalStyles.Reset}",
                     $"{TerminalStyles.AnsiAccent}[ / ]{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}previous or next track; repeat quickly to jump multiple tracks{TerminalStyles.Reset}",
+                    $"{TerminalStyles.AnsiAccent}- / ={TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}decrease or increase volume by 10%{TerminalStyles.Reset}",
                     $"{TerminalStyles.AnsiAccent}Mouse wheel{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}scroll playlist when supported{TerminalStyles.Reset}",
                     $"{TerminalStyles.AnsiAccent}Click progress bar{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}jump to that timestamp when supported{TerminalStyles.Reset}"
                 ],
                 width,
-                10,
+                11,
                 TerminalStyles.AnsiChrome);
         }
 
@@ -356,11 +357,10 @@ internal static class TerminalFrameRenderer
                 $"{TerminalStyles.AnsiAccent}add <url>{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}load a YouTube video or playlist{TerminalStyles.Reset}",
                 $"{TerminalStyles.AnsiAccent}play/pause{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}toggle playback{TerminalStyles.Reset}   {TerminalStyles.AnsiAccent}next [count] / prev [count]{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}skip or return tracks{TerminalStyles.Reset}",
                 $"{TerminalStyles.AnsiAccent}clear playlist{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}stop playback and empty the queue{TerminalStyles.Reset}",
-                $"{TerminalStyles.AnsiAccent}controls{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}show keyboard and mouse shortcuts{TerminalStyles.Reset}",
                 $"{TerminalStyles.AnsiAccent}q/quit/exit{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}stop playback and exit{TerminalStyles.Reset}"
             ],
             width,
-            7,
+            6,
             TerminalStyles.AnsiChrome);
     }
 
@@ -391,11 +391,12 @@ internal static class TerminalFrameRenderer
         var title = track?.Title ?? "Queue is empty";
         var contentWidth = Math.Max(8, width - 6);
         var time = $"{FormatDuration(snapshot.Elapsed)} / {FormatDuration(track?.Duration)}";
+        var metrics = $"{TerminalStyles.AnsiMuted}{time}{TerminalStyles.Reset} {TerminalStyles.AnsiChrome}|{TerminalStyles.Reset} {VolumeText(snapshot.VolumePercent)}";
         var rows = new List<string>
         {
             $"{TerminalStyles.Bold}{TerminalStyles.AnsiAccent}PopMark{TerminalStyles.Reset} {StatusPill(snapshot.Status)}",
             $"{TerminalStyles.AnsiWhite}{TerminalText.TrimForWidget(title, contentWidth)}{TerminalStyles.Reset}",
-            $"{ProgressBar(ProgressRatio(snapshot), Math.Max(8, contentWidth - TerminalText.VisibleLength(time) - 3))} {TerminalStyles.AnsiMuted}{time}{TerminalStyles.Reset}"
+            $"{ProgressBar(ProgressRatio(snapshot), Math.Max(8, contentWidth - TerminalText.VisibleLength(metrics) - 3))} {metrics}"
         };
 
         if (height >= 8)
@@ -504,6 +505,30 @@ internal static class TerminalFrameRenderer
         return $"{TerminalStyles.AnsiAccent}{new string('█', filled)}{TerminalStyles.AnsiChrome}{new string('░', empty)}{TerminalStyles.Reset}";
     }
 
+    private static string PlaybackMetrics(PlayerSnapshot snapshot)
+    {
+        var time = $"{FormatDuration(snapshot.Elapsed)} / {FormatDuration(snapshot.Current?.Duration)}";
+        return $"{TerminalStyles.AnsiMuted}{time}{TerminalStyles.Reset} {TerminalStyles.AnsiChrome}|{TerminalStyles.Reset} {VolumeIndicator(snapshot.VolumePercent)}";
+    }
+
+    private static string VolumeIndicator(int volumePercent)
+    {
+        var volume = Math.Clamp(volumePercent, 0, 130);
+        var normalVolume = Math.Min(volume, 100);
+        const int meterWidth = 8;
+        var filled = Math.Clamp((int)Math.Round(normalVolume / 100d * meterWidth), 0, meterWidth);
+        var empty = meterWidth - filled;
+
+        return $"{TerminalStyles.AnsiMuted}Vol{TerminalStyles.Reset} {TerminalStyles.AnsiAccent}{new string('█', filled)}{TerminalStyles.AnsiChrome}{new string('░', empty)}{TerminalStyles.Reset} {VolumeText(volume)}";
+    }
+
+    private static string VolumeText(int volumePercent)
+    {
+        var volume = Math.Clamp(volumePercent, 0, 130);
+        var style = volume > 100 ? TerminalStyles.AnsiSecondary : TerminalStyles.AnsiMuted;
+        return $"{style}{volume}%{TerminalStyles.Reset}";
+    }
+
     private static string BrailleWaveVisualizer(PlaybackStatus status, int frame, int width)
     {
         width = Math.Max(1, width);
@@ -583,8 +608,8 @@ internal static class TerminalFrameRenderer
             return null;
 
         var contentWidth = Math.Max(8, width - 6);
-        var time = $"{FormatDuration(snapshot.Elapsed)} / {FormatDuration(snapshot.Current.Duration)}";
-        var progressWidth = Math.Max(8, contentWidth - TerminalText.VisibleLength(time) - 3);
+        var metrics = PlaybackMetrics(snapshot);
+        var progressWidth = Math.Max(8, contentWidth - TerminalText.VisibleLength(metrics) - 3);
         return new ProgressHitbox(X: 3, Y: y, Width: progressWidth);
     }
 

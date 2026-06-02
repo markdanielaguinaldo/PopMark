@@ -6,6 +6,10 @@ namespace PopMark.Helpers.Terminal;
 
 internal static class ReactiveInputReader
 {
+    private const int RepeatedShortcutCoalesceMilliseconds = 160;
+    private const int MaxRepeatedShortcutCount = 99;
+    private static readonly Queue<ConsoleKeyInfo> PendingKeys = new();
+
     public static string Read(
         ref int lastWidth,
         ref int lastHeight,
@@ -71,7 +75,7 @@ internal static class ReactiveInputReader
                 continue;
             }
 
-            if (!Console.KeyAvailable)
+            if (!HasInputKeyAvailable())
             {
                 var now = DateTimeOffset.UtcNow;
                 var snapshot = snapshotProvider();
@@ -97,7 +101,7 @@ internal static class ReactiveInputReader
                 continue;
             }
 
-            var key = Console.ReadKey(intercept: true);
+            var key = ReadInputKey();
 
             if (TryResolveTerminalCommand(key, buffer.Length == 0, out var terminalCommand))
             {
@@ -113,10 +117,10 @@ internal static class ReactiveInputReader
             if (buffer.Length == 0)
             {
                 if (key.KeyChar == ']')
-                    return ReturnWithSize("next", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
+                    return ReturnWithSize(ResolveRepeatedBracketShortcut(']', "next"), ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
 
                 if (key.KeyChar == '[')
-                    return ReturnWithSize("previous", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
+                    return ReturnWithSize(ResolveRepeatedBracketShortcut('[', "previous"), ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
 
                 switch (key.Key)
                 {
@@ -176,6 +180,45 @@ internal static class ReactiveInputReader
         return value;
     }
 
+    private static bool HasInputKeyAvailable() =>
+        PendingKeys.Count > 0 || Console.KeyAvailable;
+
+    private static ConsoleKeyInfo ReadInputKey() =>
+        PendingKeys.Count > 0
+            ? PendingKeys.Dequeue()
+            : Console.ReadKey(intercept: true);
+
+    private static void PushBackInputKey(ConsoleKeyInfo key) =>
+        PendingKeys.Enqueue(key);
+
+    private static string ResolveRepeatedBracketShortcut(char shortcut, string command)
+    {
+        var count = 1;
+        var deadline = DateTimeOffset.UtcNow.AddMilliseconds(RepeatedShortcutCoalesceMilliseconds);
+        while (count < MaxRepeatedShortcutCount && DateTimeOffset.UtcNow <= deadline)
+        {
+            if (!HasInputKeyAvailable())
+            {
+                Thread.Sleep(8);
+                continue;
+            }
+
+            var next = ReadInputKey();
+            if (next.KeyChar != shortcut)
+            {
+                PushBackInputKey(next);
+                break;
+            }
+
+            count++;
+            deadline = DateTimeOffset.UtcNow.AddMilliseconds(RepeatedShortcutCoalesceMilliseconds);
+        }
+
+        return count == 1
+            ? command
+            : $"{command} {count}";
+    }
+
     private static bool TryResolveTerminalCommand(ConsoleKeyInfo key, bool shortcutsEnabled, out string command)
     {
         command = string.Empty;
@@ -186,13 +229,13 @@ internal static class ReactiveInputReader
         var deadline = DateTimeOffset.UtcNow.AddMilliseconds(150);
         while (sequence.Length < 64 && DateTimeOffset.UtcNow <= deadline)
         {
-            if (!Console.KeyAvailable)
+            if (!HasInputKeyAvailable())
             {
                 Thread.Sleep(1);
                 continue;
             }
 
-            var next = Console.ReadKey(intercept: true);
+            var next = ReadInputKey();
             if (next.KeyChar == '\0')
                 continue;
 

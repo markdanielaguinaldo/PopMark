@@ -60,8 +60,8 @@ dotnet run --project .\PopMark\PopMark.csproj -- play-test "https://www.youtube.
 | --- | --- |
 | `add <url>` | Add a YouTube video or playlist |
 | `play` / `pause` | Toggle playback |
-| `next [count]` / `]` | Skip to the next track, or skip multiple tracks with a count |
-| `prev [count]` / `previous [count]` / `[` | Return to the previous track, or go back multiple tracks with a count |
+| `next [count]` / `]` | Skip to the next track, or skip multiple tracks with a count. Repeat `]` quickly to jump multiple tracks. |
+| `prev [count]` / `previous [count]` / `[` | Return to the previous track, or go back multiple tracks with a count. Repeat `[` quickly to jump multiple tracks. |
 | `Left Arrow` / `Right Arrow` | Seek backward or forward by 10 seconds |
 | Click progress bar | Jump to that timestamp when the terminal supports mouse input |
 | `Up Arrow` / `Down Arrow` / mouse wheel | Scroll the playlist panel by one row |

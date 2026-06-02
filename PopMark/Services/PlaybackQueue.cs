@@ -224,6 +224,21 @@ public sealed class PlaybackQueue
         NotifySnapshotChanged();
     }
 
+    public async Task ClearPlaylistAsync(CancellationToken cancellationToken = default)
+    {
+        lock (_syncRoot)
+        {
+            _current = null;
+            _pending.Clear();
+            _status = PlaybackStatus.Stopped;
+            ResetPositionLocked(startRunning: false);
+        }
+
+        await _mpv.StopAsync(cancellationToken);
+        LastMessage = "Playlist cleared.";
+        NotifySnapshotChanged();
+    }
+
     public async Task StopPlaybackAndKeepQueueAsync(CancellationToken cancellationToken = default)
     {
         lock (_syncRoot)

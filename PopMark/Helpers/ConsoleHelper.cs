@@ -10,15 +10,21 @@ public static class ConsoleHelper
 {
     private const int StdOutputHandle = -11;
     private const uint EnableVirtualTerminalProcessing = 0x0004;
-    private const int MiniWidgetWidth = 46;
-    private const int MiniWidgetHeight = 9;
     private const string Accent = "#00d4ff";
-    private const string Secondary = "#8b5cf6";
     private const string SuccessColor = "#00d4ff";
     private const string Muted = "grey70";
-    private const string Chrome = "grey35";
-    private const string PanelBorder = "#00d4ff";
+    private const string Reset = "\u001b[0m";
+    private const string Bold = "\u001b[1m";
+    private const string AnsiAccent = "\u001b[38;2;0;212;255m";
+    private const string AnsiSecondary = "\u001b[38;2;139;92;246m";
+    private const string AnsiMuted = "\u001b[38;2;150;150;150m";
+    private const string AnsiChrome = "\u001b[38;2;82;82;82m";
+    private const string AnsiWhite = "\u001b[38;2;245;245;245m";
     private static readonly string[] VisualizerBars = ["▁", "▂", "▃", "▄", "▅", "▆", "▇"];
+    private static List<string>? _lastRenderedLines;
+    private static int _lastRenderedWidth;
+    private static int _lastRenderedHeight;
+    private static bool _usingAlternateScreen;
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern nint GetStdHandle(int nStdHandle);
@@ -88,49 +94,54 @@ public static class ConsoleHelper
         }
     }
 
+    public static void EnterInteractiveScreen()
+    {
+        if (Console.IsOutputRedirected || _usingAlternateScreen)
+            return;
+
+        Console.Write("\u001b[?1049h\u001b[H\u001b[2J");
+        _usingAlternateScreen = true;
+        ResetFrameCache();
+    }
+
+    public static void LeaveInteractiveScreen()
+    {
+        if (Console.IsOutputRedirected || !_usingAlternateScreen)
+            return;
+
+        ResetFrameCache();
+        Console.Write("\u001b[?1049l");
+        _usingAlternateScreen = false;
+    }
+
     public static void DrawCommandCenter(PlayerSnapshot snapshot, string notice, bool showHelp = false)
     {
-        TryClear();
-
-        AnsiConsole.Write(BuildHeaderPanel(snapshot));
-        AnsiConsole.Write(BuildMainGrid(snapshot, notice));
-        AnsiConsole.Write(BuildPlaybackBar(snapshot));
-        if (showHelp)
-            AnsiConsole.Write(BuildHelpTable());
-        else
-            AnsiConsole.Write(BuildFooterCommandBar());
+        var (width, height) = GetWindowSize();
+        RenderFrame(new RenderContext(
+            width,
+            height,
+            snapshot,
+            notice,
+            Input: string.Empty,
+            ShowHelp: showHelp,
+            MiniMode: false,
+            AnimationFrame: 0),
+            forceFullPaint: true);
     }
 
     public static void DrawMiniPlayer(PlayerSnapshot snapshot, string notice)
     {
-        TryClear();
-
-        var track = snapshot.Current?.Title
-            ?? snapshot.Pending.FirstOrDefault()?.Title
-            ?? "Queue is empty";
-        var duration = FormatDuration(snapshot.Current?.Duration ?? snapshot.Pending.FirstOrDefault()?.Duration);
-        var progress = ProgressRatio(snapshot);
-        var (_, windowHeight) = GetWindowSize();
-        var topPadding = Math.Max(0, windowHeight - MiniWidgetHeight - 2);
-        var textWidth = MiniWidgetWidth - 10;
-        if (!Console.IsOutputRedirected && topPadding > 0)
-            Console.Write(new string('\n', topPadding));
-
-        var body = new Rows(
-            Align.Center(new Markup($"[bold {Accent}]PopMark[/]")),
-            Align.Center(new Markup($"{MiniStatusMarkup(snapshot.Status)} [white]{Markup.Escape(TrimForWidget(track, textWidth))}[/]")),
-            Align.Center(new Markup($"[{Accent}]{BuildProgressBar(progress, 20)}[/]")),
-            Align.Center(new Markup($"[{Muted}]{FormatDuration(snapshot.Elapsed)} / {duration}[/]")),
-            Align.Center(new Markup(BuildVisualizer(snapshot.Status, MiniVisualizerBarCount()))),
-            Align.Center(new Markup($"[{Muted}]{Markup.Escape(TrimForWidget(notice, textWidth))}[/]")));
-
-        var panel = new Panel(body)
-            .Border(BoxBorder.Rounded)
-            .BorderStyle(Style.Parse(PanelBorder))
-            .Header($"[bold {Secondary}]Compact[/]", Justify.Right)
-            .Padding(1, 0);
-
-        AnsiConsole.Write(Align.Right(panel));
+        var (width, height) = GetWindowSize();
+        RenderFrame(new RenderContext(
+            width,
+            height,
+            snapshot,
+            notice,
+            Input: string.Empty,
+            ShowHelp: false,
+            MiniMode: true,
+            AnimationFrame: 0),
+            forceFullPaint: true);
     }
 
     public static string ReadReactiveInput(
@@ -142,93 +153,138 @@ public static class ConsoleHelper
         Func<bool>? miniModeProvider = null,
         Func<bool>? helpModeProvider = null)
     {
+        if (snapshotProvider is null || noticeProvider is null)
+        {
+            AnsiConsole.Markup($"[bold {Accent}]popmark[/][{Muted}] >[/] ");
+            return Console.ReadLine()?.Trim() ?? string.Empty;
+        }
+
         var buffer = new StringBuilder();
         var historyIndex = commandHistory.Count;
         var browsingHistory = false;
         var draftInput = string.Empty;
-        var lastRefresh = DateTimeOffset.UtcNow;
-        var lastScreenSignature = BuildScreenSignature(snapshotProvider, noticeProvider, miniModeProvider, helpModeProvider);
-        RenderPrompt(buffer.ToString());
+        var animationFrame = 0;
+        var lastRefresh = DateTimeOffset.MinValue;
+        var lastScreenSignature = string.Empty;
+        var trackedWidth = lastWidth;
+        var trackedHeight = lastHeight;
 
-        void RefreshScreen()
+        bool IsInputActive() => buffer.Length > 0 || browsingHistory;
+
+        void RefreshScreen(bool advanceAnimation = false)
         {
-            if (snapshotProvider is null || noticeProvider is null)
-                return;
+            if (advanceAnimation)
+                animationFrame++;
 
-            if (miniModeProvider?.Invoke() == true)
-                DrawMiniPlayer(snapshotProvider(), noticeProvider());
-            else
-                DrawCommandCenter(snapshotProvider(), noticeProvider(), helpModeProvider?.Invoke() == true);
-            RenderPrompt(buffer.ToString());
+            var (width, height) = GetWindowSize();
+            trackedWidth = width;
+            trackedHeight = height;
+            var context = new RenderContext(
+                width,
+                height,
+                snapshotProvider(),
+                noticeProvider(),
+                buffer.ToString(),
+                helpModeProvider?.Invoke() == true,
+                miniModeProvider?.Invoke() == true,
+                animationFrame);
+            RenderFrame(context);
+            lastRefresh = DateTimeOffset.UtcNow;
+            lastScreenSignature = BuildScreenSignature(
+                snapshotProvider,
+                noticeProvider,
+                miniModeProvider,
+                helpModeProvider,
+                buffer.ToString(),
+                includeElapsed: !IsInputActive()) ?? string.Empty;
         }
 
-        void RedrawInputLine()
-        {
-            Console.Write("\r");
-            Console.Write(new string(' ', Math.Max(0, Console.WindowWidth - 1)));
-            Console.Write("\r");
-            RenderPrompt(buffer.ToString());
-        }
+        RefreshScreen();
 
         while (true)
         {
             var (width, height) = GetWindowSize();
-            if (width > 0 && height > 0 && (width != lastWidth || height != lastHeight))
+            if (width > 0 && height > 0 && (width != trackedWidth || height != trackedHeight))
             {
-                lastWidth = width;
-                lastHeight = height;
                 RefreshScreen();
-                lastScreenSignature = BuildScreenSignature(snapshotProvider, noticeProvider, miniModeProvider, helpModeProvider);
                 continue;
             }
 
             if (!Console.KeyAvailable)
             {
-                if ((DateTimeOffset.UtcNow - lastRefresh).TotalMilliseconds >= 250)
+                var now = DateTimeOffset.UtcNow;
+                var snapshot = snapshotProvider();
+                var inputActive = IsInputActive();
+                var isAnimating = !inputActive && snapshot.Status is PlaybackStatus.Playing or PlaybackStatus.Loading;
+                var refreshMilliseconds = isAnimating ? 110 : 250;
+                if ((now - lastRefresh).TotalMilliseconds >= refreshMilliseconds)
                 {
-                    lastRefresh = DateTimeOffset.UtcNow;
-                    var screenSignature = BuildScreenSignature(snapshotProvider, noticeProvider, miniModeProvider, helpModeProvider);
-                    if (!string.Equals(screenSignature, lastScreenSignature, StringComparison.Ordinal))
+                    var screenSignature = BuildScreenSignature(
+                        snapshotProvider,
+                        noticeProvider,
+                        miniModeProvider,
+                        helpModeProvider,
+                        buffer.ToString(),
+                        includeElapsed: !inputActive) ?? string.Empty;
+                    if (isAnimating || !string.Equals(screenSignature, lastScreenSignature, StringComparison.Ordinal))
                     {
-                        lastScreenSignature = screenSignature;
-                        RefreshScreen();
+                        RefreshScreen(advanceAnimation: isAnimating);
                     }
                 }
 
-                Thread.Sleep(40);
+                Thread.Sleep(isAnimating ? 24 : 40);
                 continue;
             }
 
             var key = Console.ReadKey(intercept: true);
 
             if (key.Key == ConsoleKey.L && key.Modifiers.HasFlag(ConsoleModifiers.Control))
+            {
+                lastWidth = trackedWidth;
+                lastHeight = trackedHeight;
                 return "cls";
+            }
 
             if (buffer.Length == 0 && !browsingHistory)
             {
                 switch (key.Key)
                 {
                     case ConsoleKey.Spacebar:
+                        lastWidth = trackedWidth;
+                        lastHeight = trackedHeight;
                         return "play";
                     case ConsoleKey.N:
+                        lastWidth = trackedWidth;
+                        lastHeight = trackedHeight;
                         return "next";
                     case ConsoleKey.M:
+                        lastWidth = trackedWidth;
+                        lastHeight = trackedHeight;
                         return "mini";
                     case ConsoleKey.Q:
+                        lastWidth = trackedWidth;
+                        lastHeight = trackedHeight;
                         return "q";
                     case ConsoleKey.Oem2 when key.KeyChar == '?':
+                        lastWidth = trackedWidth;
+                        lastHeight = trackedHeight;
                         return "help";
                 }
             }
 
             if (key.Key == ConsoleKey.Enter)
             {
-                Console.WriteLine();
+                lastWidth = trackedWidth;
+                lastHeight = trackedHeight;
                 return buffer.ToString().Trim();
             }
 
             if (key.Key == ConsoleKey.Escape)
+            {
+                lastWidth = trackedWidth;
+                lastHeight = trackedHeight;
                 return string.Empty;
+            }
 
             if (key.Key == ConsoleKey.UpArrow)
             {
@@ -247,7 +303,7 @@ public static class ConsoleHelper
                     historyIndex--;
                     buffer.Clear();
                     buffer.Append(commandHistory[historyIndex]);
-                    RedrawInputLine();
+                    RefreshScreen();
                 }
 
                 continue;
@@ -272,7 +328,7 @@ public static class ConsoleHelper
                     buffer.Append(draftInput);
                 }
 
-                RedrawInputLine();
+                RefreshScreen();
                 continue;
             }
 
@@ -281,7 +337,7 @@ public static class ConsoleHelper
                 if (buffer.Length > 0)
                 {
                     buffer.Length--;
-                    Console.Write("\b \b");
+                    RefreshScreen();
                 }
 
                 continue;
@@ -290,7 +346,7 @@ public static class ConsoleHelper
             if (!char.IsControl(key.KeyChar))
             {
                 buffer.Append(key.KeyChar);
-                Console.Write(key.KeyChar);
+                RefreshScreen();
             }
         }
     }
@@ -328,6 +384,453 @@ public static class ConsoleHelper
 
         return args.ToArray();
     }
+
+    private static void RenderFrame(RenderContext context, bool forceFullPaint = false)
+    {
+        var width = context.Width > 0 ? context.Width : 80;
+        var height = context.Height > 0 ? context.Height : 24;
+        var lines = BuildTerminalFrame(context with { Width = width, Height = height });
+
+        while (lines.Count < height)
+            lines.Add(string.Empty);
+
+        if (lines.Count > height)
+            lines.RemoveRange(height, lines.Count - height);
+
+        for (var i = 0; i < lines.Count; i++)
+            lines[i] = TrimAnsiAware(lines[i], width);
+
+        if (Console.IsOutputRedirected)
+        {
+            Console.Write(string.Join(Environment.NewLine, lines.Select(line => PadAnsiAware(line, width))));
+            _lastRenderedLines = [.. lines];
+            _lastRenderedWidth = width;
+            _lastRenderedHeight = height;
+            return;
+        }
+
+        var requiresFullPaint = forceFullPaint ||
+                                _lastRenderedLines is null ||
+                                _lastRenderedWidth != width ||
+                                _lastRenderedHeight != height;
+        var output = new StringBuilder();
+        output.Append(requiresFullPaint ? "\u001b[H\u001b[2J" : "\u001b[H");
+
+        for (var i = 0; i < lines.Count; i++)
+        {
+            var changed = requiresFullPaint ||
+                          i >= _lastRenderedLines!.Count ||
+                          !string.Equals(lines[i], _lastRenderedLines[i], StringComparison.Ordinal);
+            if (changed)
+                output.Append("\u001b[2K").Append(PadAnsiAware(lines[i], width));
+
+            if (i < lines.Count - 1)
+                output.Append("\u001b[1E");
+        }
+
+        Console.Write(output.ToString());
+        _lastRenderedLines = [.. lines];
+        _lastRenderedWidth = width;
+        _lastRenderedHeight = height;
+    }
+
+    private static List<string> BuildTerminalFrame(RenderContext context) =>
+        context.MiniMode
+            ? BuildMiniFrame(context)
+            : BuildCommandFrame(context);
+
+    private static List<string> BuildCommandFrame(RenderContext context)
+    {
+        var width = Math.Max(24, context.Width);
+        var height = Math.Max(1, context.Height);
+        var prompt = PromptComponent(context.Input, width);
+        var available = Math.Max(0, height - 1);
+        var lines = new List<string>();
+        if (available == 0)
+            return [prompt];
+
+        var footer = FooterComponent(width, context.ShowHelp);
+        var playbackHeight = available >= 8 ? 4 : available >= 5 ? 3 : 0;
+        var footerHeight = Math.Min(footer.Count, Math.Max(0, available - 1 - playbackHeight));
+        var mainBudget = Math.Max(0, available - 1 - playbackHeight - footerHeight);
+
+        lines.Add(HeaderComponent(context, width));
+
+        if (context.Snapshot.Current is null && context.Snapshot.Pending.Count == 0)
+        {
+            lines.AddRange(EmptyStateComponent(width, mainBudget));
+        }
+        else if (mainBudget > 0)
+        {
+            var nowHeight = mainBudget <= 5
+                ? mainBudget
+                : Math.Min(7, Math.Max(4, mainBudget / 2));
+            var queueHeight = Math.Max(0, mainBudget - nowHeight);
+            lines.AddRange(NowPlayingComponent(context, width, nowHeight));
+            lines.AddRange(QueueComponent(context.Snapshot, width, queueHeight));
+        }
+
+        if (playbackHeight > 0)
+            lines.AddRange(PlaybackStripComponent(context, width, playbackHeight));
+
+        if (footerHeight > 0)
+            lines.AddRange(footer.Take(footerHeight));
+
+        while (lines.Count < available)
+            lines.Add(string.Empty);
+
+        if (lines.Count > available)
+            lines.RemoveRange(available, lines.Count - available);
+
+        lines.Add(prompt);
+        return lines;
+    }
+
+    private static List<string> BuildMiniFrame(RenderContext context)
+    {
+        var width = Math.Max(24, context.Width);
+        var height = Math.Max(1, context.Height);
+        var prompt = PromptComponent(context.Input, width);
+        var available = Math.Max(0, height - 1);
+        if (available == 0)
+            return [prompt];
+
+        var blockWidth = Math.Min(width, Math.Max(42, Math.Min(72, width - 2)));
+        var leftPad = Math.Max(0, (width - blockWidth) / 2);
+        var blockHeight = Math.Min(7, available);
+        var block = MiniPlayerComponent(context, blockWidth, blockHeight)
+            .Select(line => $"{new string(' ', leftPad)}{line}")
+            .ToList();
+        var lines = new List<string>();
+        var topPadding = Math.Max(0, available - block.Count);
+        lines.AddRange(Enumerable.Repeat(string.Empty, topPadding));
+        lines.AddRange(block);
+
+        while (lines.Count < available)
+            lines.Add(string.Empty);
+
+        if (lines.Count > available)
+            lines.RemoveRange(0, lines.Count - available);
+
+        lines.Add(prompt);
+        return lines;
+    }
+
+    private static string HeaderComponent(RenderContext context, int width)
+    {
+        var queue = QueueCount(context.Snapshot);
+        var left = $"{Bold}{AnsiAccent}PopMark{Reset} {AnsiMuted}{StatusText(context.Snapshot.Status)}{Reset}";
+        var right = $"{AnsiMuted}Queue{Reset} {AnsiWhite}{queue}{Reset}";
+        var gap = Math.Max(1, width - VisibleLength(left) - VisibleLength(right));
+        return PadAnsiAware($"{left}{new string(' ', gap)}{right}", width);
+    }
+
+    private static IReadOnlyList<string> NowPlayingComponent(RenderContext context, int width, int height)
+    {
+        if (height <= 0)
+            return [];
+
+        var snapshot = context.Snapshot;
+        var track = snapshot.Current ?? snapshot.Pending.FirstOrDefault();
+        var title = track?.Title ?? "Nothing loaded";
+        var source = track?.DisplaySource ?? "add <url>";
+        var duration = FormatDuration(track?.Duration);
+        var rows = new List<string>
+        {
+            $"{Bold}{AnsiWhite}{TrimForWidget(title, Math.Max(8, width - 8))}{Reset}",
+            $"{AnsiMuted}{TrimForWidget(source, Math.Max(8, width - 18))}{Reset}",
+            $"{StatusPill(snapshot.Status)} {AnsiMuted}{TrimForWidget(context.Notice, Math.Max(8, width - 18))}{Reset}",
+            $"{AnsiMuted}Elapsed{Reset} {AnsiWhite}{FormatDuration(snapshot.Elapsed)}{Reset} {AnsiChrome}|{Reset} {AnsiMuted}Duration{Reset} {AnsiWhite}{duration}{Reset}"
+        };
+
+        return Box("Now Playing", rows, width, height, AnsiAccent);
+    }
+
+    private static IReadOnlyList<string> QueueComponent(PlayerSnapshot snapshot, int width, int height)
+    {
+        if (height <= 0)
+            return [];
+
+        var rows = new List<string>();
+        if (snapshot.Current is not null)
+            rows.Add($"{AnsiAccent}> {TrimForWidget(snapshot.Current.Title, Math.Max(8, width - 10))}{Reset}");
+
+        var availableTracks = Math.Max(0, height - 3 - rows.Count);
+        var index = 1;
+        foreach (var track in snapshot.Pending.Take(availableTracks))
+        {
+            var color = index == 1 ? AnsiWhite : AnsiMuted;
+            rows.Add($"{color}{index,2}. {TrimForWidget(track.Title, Math.Max(8, width - 12))}{Reset}");
+            index++;
+        }
+
+        if (snapshot.Pending.Count == 0 && snapshot.Current is not null)
+            rows.Add($"{AnsiMuted}End of queue{Reset}");
+        else if (snapshot.Pending.Count > availableTracks)
+            rows.Add($"{AnsiMuted}+ {snapshot.Pending.Count - availableTracks} more{Reset}");
+
+        return Box("Queue", rows, width, height, AnsiChrome);
+    }
+
+    private static IReadOnlyList<string> PlaybackStripComponent(RenderContext context, int width, int height)
+    {
+        if (height <= 0)
+            return [];
+
+        var contentWidth = Math.Max(8, width - 6);
+        var time = $"{FormatDuration(context.Snapshot.Elapsed)} / {FormatDuration(context.Snapshot.Current?.Duration)}";
+        var progressWidth = Math.Max(8, contentWidth - VisibleLength(time) - 3);
+        var rows = new List<string>
+        {
+            $"{ProgressBar(ProgressRatio(context.Snapshot), progressWidth)} {AnsiMuted}{time}{Reset}",
+            Visualizer(context.Snapshot.Status, context.AnimationFrame, contentWidth)
+        };
+
+        return Box("Playback", rows, width, height, AnsiChrome);
+    }
+
+    private static IReadOnlyList<string> FooterComponent(int width, bool showHelp)
+    {
+        if (!showHelp)
+        {
+            return
+            [
+                PadAnsiAware($"{AnsiMuted}SPACE{Reset} play/pause {AnsiChrome}|{Reset} {AnsiMuted}N{Reset} next {AnsiChrome}|{Reset} {AnsiMuted}seek +/-30{Reset} {AnsiChrome}|{Reset} {AnsiMuted}clear playlist{Reset} {AnsiChrome}|{Reset} {AnsiMuted}M{Reset} mini {AnsiChrome}|{Reset} {AnsiMuted}Q{Reset} quit", width)
+            ];
+        }
+
+        return Box(
+            "Commands",
+            [
+                $"{AnsiAccent}add <url>{Reset}  {AnsiMuted}load a YouTube video or playlist{Reset}",
+                $"{AnsiAccent}play/pause{Reset}  {AnsiMuted}toggle playback{Reset}   {AnsiAccent}next{Reset}  {AnsiMuted}skip track{Reset}",
+                $"{AnsiAccent}seek <seconds>{Reset}  {AnsiMuted}relative seek, for example seek 30 or seek -30{Reset}",
+                $"{AnsiAccent}clear playlist{Reset}  {AnsiMuted}stop playback and empty the queue{Reset}",
+                $"{AnsiAccent}mini{Reset}  {AnsiMuted}compact view{Reset}   {AnsiAccent}cls{Reset}  {AnsiMuted}redraw{Reset}   {AnsiAccent}q{Reset}  {AnsiMuted}quit{Reset}"
+            ],
+            width,
+            7,
+            AnsiChrome);
+    }
+
+    private static IReadOnlyList<string> EmptyStateComponent(int width, int height)
+    {
+        if (height <= 0)
+            return [];
+
+        return Box(
+            "Ready",
+            [
+                $"{Bold}{AnsiAccent}PopMark{Reset}",
+                $"{AnsiMuted}Queue is empty.{Reset}",
+                $"{AnsiWhite}add <url>{Reset} {AnsiMuted}to start playback from YouTube.{Reset}"
+            ],
+            width,
+            height,
+            AnsiAccent);
+    }
+
+    private static IReadOnlyList<string> MiniPlayerComponent(RenderContext context, int width, int height)
+    {
+        if (height <= 0)
+            return [];
+
+        var snapshot = context.Snapshot;
+        var track = snapshot.Current ?? snapshot.Pending.FirstOrDefault();
+        var title = track?.Title ?? "Queue is empty";
+        var contentWidth = Math.Max(8, width - 6);
+        var time = $"{FormatDuration(snapshot.Elapsed)} / {FormatDuration(track?.Duration)}";
+        var rows = new List<string>
+        {
+            $"{Bold}{AnsiAccent}PopMark{Reset} {StatusPill(snapshot.Status)}",
+            $"{AnsiWhite}{TrimForWidget(title, contentWidth)}{Reset}",
+            $"{ProgressBar(ProgressRatio(snapshot), Math.Max(8, contentWidth - VisibleLength(time) - 3))} {AnsiMuted}{time}{Reset}",
+            Visualizer(snapshot.Status, context.AnimationFrame, contentWidth),
+            $"{AnsiMuted}{TrimForWidget(context.Notice, contentWidth)}{Reset}"
+        };
+
+        return Box("Mini", rows, width, height, AnsiAccent);
+    }
+
+    private static IReadOnlyList<string> Box(string title, IReadOnlyList<string> rows, int width, int height, string borderStyle)
+    {
+        width = Math.Max(8, width);
+        height = Math.Max(1, height);
+        if (height == 1)
+            return [PadAnsiAware($"{borderStyle}{TrimForWidget(title, width)}{Reset}", width)];
+
+        var innerWidth = width - 2;
+        var titleText = $" {TrimForWidget(title, Math.Max(0, innerWidth - 2))} ";
+        var topFill = Math.Max(0, innerWidth - VisibleLength(titleText));
+        var lines = new List<string>
+        {
+            $"{borderStyle}┌{titleText}{new string('─', topFill)}┐{Reset}"
+        };
+
+        var contentHeight = height - 2;
+        for (var i = 0; i < contentHeight; i++)
+        {
+            var content = i < rows.Count ? TrimAnsiAware(rows[i], Math.Max(0, innerWidth - 2)) : string.Empty;
+            lines.Add($"{borderStyle}│{Reset} {PadAnsiAware(content, Math.Max(0, innerWidth - 2))} {borderStyle}│{Reset}");
+        }
+
+        lines.Add($"{borderStyle}└{new string('─', innerWidth)}┘{Reset}");
+        return lines;
+    }
+
+    private static string PromptComponent(string input, int width)
+    {
+        var prefix = $"{Bold}{AnsiAccent}popmark{Reset}{AnsiMuted} > {Reset}";
+        var maxInputWidth = Math.Max(0, width - VisibleLength(prefix) - 1);
+        var displayInput = TailForWidth(input, maxInputWidth);
+        return PadAnsiAware($"{prefix}{AnsiWhite}{displayInput}{Reset}{AnsiAccent}|{Reset}", width);
+    }
+
+    private static string StatusText(PlaybackStatus status) =>
+        status switch
+        {
+            PlaybackStatus.Playing => "playing",
+            PlaybackStatus.Loading => "loading",
+            PlaybackStatus.Paused => "paused",
+            PlaybackStatus.Detached => "detached",
+            _ => "stopped"
+        };
+
+    private static string StatusPill(PlaybackStatus status)
+    {
+        var (style, label) = status switch
+        {
+            PlaybackStatus.Playing => (AnsiAccent, "PLAYING"),
+            PlaybackStatus.Loading => (AnsiSecondary, "LOADING"),
+            PlaybackStatus.Paused => (AnsiAccent, "PAUSED"),
+            PlaybackStatus.Detached => (AnsiSecondary, "DETACHED"),
+            _ => (AnsiMuted, "STOPPED")
+        };
+
+        return $"{style}{label}{Reset}";
+    }
+
+    private static string ProgressBar(double ratio, int width)
+    {
+        width = Math.Max(1, width);
+        var filled = (int)Math.Round(width * Math.Clamp(ratio, 0, 1));
+        filled = Math.Clamp(filled, 0, width);
+        var empty = width - filled;
+        return $"{AnsiAccent}{new string('█', filled)}{AnsiChrome}{new string('░', empty)}{Reset}";
+    }
+
+    private static string Visualizer(PlaybackStatus status, int frame, int width)
+    {
+        width = Math.Max(1, width);
+        var barCount = Math.Max(1, (width + 1) / 2);
+        var style = status switch
+        {
+            PlaybackStatus.Playing or PlaybackStatus.Loading => AnsiAccent,
+            PlaybackStatus.Paused => AnsiMuted,
+            _ => AnsiChrome
+        };
+
+        var bars = Enumerable.Range(0, barCount).Select(i =>
+        {
+            if (status == PlaybackStatus.Paused)
+                return "▃";
+
+            if (status is not (PlaybackStatus.Playing or PlaybackStatus.Loading))
+                return "▁";
+
+            var phase = (frame + (i * 3) + ((i % 5) * 2)) % VisualizerBars.Length;
+            return VisualizerBars[phase];
+        });
+
+        return TrimAnsiAware($"{style}{string.Join(' ', bars)}{Reset}", width);
+    }
+
+    private static string PadAnsiAware(string value, int width)
+    {
+        var visible = VisibleLength(value);
+        return visible >= width ? value : $"{value}{new string(' ', width - visible)}";
+    }
+
+    private static string TrimAnsiAware(string value, int width)
+    {
+        if (width <= 0)
+            return string.Empty;
+
+        var visible = 0;
+        var output = new StringBuilder();
+        for (var i = 0; i < value.Length && visible < width; i++)
+        {
+            if (value[i] == '\u001b')
+            {
+                var start = i;
+                output.Append(value[i]);
+                while (i + 1 < value.Length)
+                {
+                    i++;
+                    output.Append(value[i]);
+                    if (char.IsLetter(value[i]))
+                        break;
+                }
+
+                if (i == start)
+                    visible++;
+
+                continue;
+            }
+
+            output.Append(value[i]);
+            visible++;
+        }
+
+        if (VisibleLength(value) > width)
+            output.Append(Reset);
+
+        return output.ToString();
+    }
+
+    private static int VisibleLength(string value)
+    {
+        var visible = 0;
+        for (var i = 0; i < value.Length; i++)
+        {
+            if (value[i] == '\u001b')
+            {
+                while (i + 1 < value.Length)
+                {
+                    i++;
+                    if (char.IsLetter(value[i]))
+                        break;
+                }
+
+                continue;
+            }
+
+            visible++;
+        }
+
+        return visible;
+    }
+
+    private static string TailForWidth(string value, int width)
+    {
+        if (width <= 0)
+            return string.Empty;
+
+        if (value.Length <= width)
+            return value;
+
+        return value[^width..];
+    }
+
+    private sealed record RenderContext(
+        int Width,
+        int Height,
+        PlayerSnapshot Snapshot,
+        string Notice,
+        string Input,
+        bool ShowHelp,
+        bool MiniMode,
+        int AnimationFrame);
 
     public static void UseBarCursor()
     {
@@ -377,277 +880,8 @@ public static class ConsoleHelper
     public static void Error(string message) =>
         AnsiConsole.MarkupLine($"[red][[ERR]][/] {Markup.Escape(message)}");
 
-    private static IRenderable BuildHeaderPanel(PlayerSnapshot snapshot)
-    {
-        var grid = new Grid()
-            .Expand()
-            .AddColumn()
-            .AddColumn(new GridColumn().RightAligned());
-
-        grid.AddRow(
-            $"[bold {Accent}]PopMark[/] [{Muted}]terminal music console[/]",
-            $"[{Muted}]Queue:[/] [white]{QueueCount(snapshot)}[/]");
-        grid.AddRow(
-            $"[{Muted}]Status:[/] {StatusMarkup(snapshot.Status)}",
-            $"[{Muted}]Volume:[/] [white]mpv[/]  [{Muted}]Repeat:[/] [white]Off[/]");
-
-        return new Panel(grid)
-            .Border(BoxBorder.Square)
-            .BorderStyle(Style.Parse(PanelBorder))
-            .Padding(1, 0);
-    }
-
-    private static IRenderable BuildMainGrid(PlayerSnapshot snapshot, string notice)
-    {
-        if (snapshot.Current is null && snapshot.Pending.Count == 0)
-            return BuildEmptyStatePanel();
-
-        return new Rows(
-            BuildNowPlayingPanel(snapshot, notice),
-            BuildQueuePanel(snapshot));
-    }
-
-    private static IRenderable BuildNowPlayingPanel(PlayerSnapshot snapshot, string notice)
-    {
-        var title = snapshot.Current?.Title
-            ?? snapshot.Pending.FirstOrDefault()?.Title
-            ?? "Nothing loaded";
-
-        var playlist = snapshot.Current?.DisplaySource
-            ?? snapshot.Pending.FirstOrDefault()?.DisplaySource
-            ?? "add <url>";
-        var duration = FormatDuration(snapshot.Current?.Duration ?? snapshot.Pending.FirstOrDefault()?.Duration);
-
-        var rows = new Rows(
-            new Markup($"[bold {Accent}]{Markup.Escape(TrimForWidget(title, 58))}[/]"),
-            new Markup($"[white]{Markup.Escape(TrimForWidget(ResolveSubtitle(title), 58))}[/]"),
-            new Markup($"[{Muted}]Playlist:[/] [white]{Markup.Escape(TrimForWidget(playlist, 46))}[/]"),
-            new Markup($"[{Muted}]Source:[/] [white]{ResolveSourceName(snapshot.Current)}[/]  [{Muted}]Duration:[/] [white]{duration}[/]"),
-            new Text(""),
-            new Markup($"{ActivityMarkup(snapshot.Status)} [{Chrome}]//[/] [{Muted}]{Markup.Escape(TrimForWidget(notice, 58))}[/]"));
-
-        return new Panel(rows)
-            .Border(BoxBorder.Rounded)
-            .BorderStyle(Style.Parse(PanelBorder))
-            .Header($"[bold {Secondary}] NOW PLAYING [/]", Justify.Center)
-            .Padding(2, 1)
-            .Expand();
-    }
-
-    private static IRenderable BuildQueuePanel(PlayerSnapshot snapshot)
-    {
-        var rows = new List<IRenderable>
-        {
-            new Markup($"[bold {Secondary}]UP NEXT[/]")
-        };
-
-        if (snapshot.Current is not null)
-            rows.Add(new Markup($"[{Accent}]▶ {Markup.Escape(TrimForWidget(snapshot.Current.Title, 28))}[/]"));
-
-        var index = 1;
-        foreach (var track in snapshot.Pending.Take(7))
-        {
-            var color = index == 1 ? "white" : Muted;
-            rows.Add(new Markup(
-                $"[{color}]  {Markup.Escape(TrimForWidget(track.Title, 30))}[/]"));
-            index++;
-        }
-
-        if (snapshot.Pending.Count == 0 && snapshot.Current is not null)
-            rows.Add(new Markup($"[{Muted}]  End of queue[/]"));
-
-        if (snapshot.Pending.Count > 7)
-            rows.Add(new Markup($"[{Muted}]+ {snapshot.Pending.Count - 7} more[/]"));
-
-        return new Panel(new Rows(rows))
-            .Border(BoxBorder.Rounded)
-            .BorderStyle(Style.Parse(Chrome))
-            .Padding(1, 1)
-            .Expand();
-    }
-
-    private static IRenderable BuildHelpTable()
-    {
-        var table = new Table()
-            .NoBorder()
-            .Expand()
-            .AddColumn($"[bold {Accent}]Command[/]")
-            .AddColumn($"[bold {Secondary}]Action[/]")
-            .AddColumn($"[bold {Accent}]Alias[/]");
-
-        table.AddRow("add <url>", "Add a YouTube video or playlist", "a");
-        table.AddRow("play / pause", "Toggle playback", "r");
-        table.AddRow("next", "Skip to the next queued track", "n");
-        table.AddRow("seek <seconds>", "Move relative to the current position", "ff / rewind");
-        table.AddRow("cls", "Clear and redraw the command center", "clear / Ctrl+L");
-        table.AddRow("mini", "Toggle compact player view", "m");
-        table.AddRow("quit", "Stop playback and exit", "q");
-
-        return table;
-    }
-
-    private static IRenderable BuildPlaybackBar(PlayerSnapshot snapshot)
-    {
-        var visualizerWidth = FullVisualizerBarCount();
-
-        var rows = new Rows(
-            new Markup($"[{Accent}]{BuildFullProgressLine(snapshot)}[/]"),
-            new Markup($"[{SuccessColor}]{BuildVisualizerText(snapshot.Status, visualizerWidth)}[/]"));
-
-        return new Panel(rows)
-            .Border(BoxBorder.Square)
-            .BorderStyle(Style.Parse(PanelBorder))
-            .Padding(1, 0);
-    }
-
-    private static IRenderable BuildFooterCommandBar()
-    {
-        var commands = new Markup(
-            $"[{Muted}]add <url>[/] [{Chrome}]|[/] [{Accent}]SPACE[/] play/pause [{Chrome}]|[/] [{Muted}]N[/] next [{Chrome}]|[/] [{Accent}]seek 30[/] [{Chrome}]|[/] [{Muted}]M[/] mini [{Chrome}]|[/] [{Accent}]Q[/] quit");
-
-        return new Panel(commands)
-            .Border(BoxBorder.Square)
-            .BorderStyle(Style.Parse(Chrome))
-            .Padding(1, 0);
-    }
-
-    private static IRenderable BuildEmptyStatePanel()
-    {
-        var rows = new Rows(
-            Align.Center(new Markup($"[bold {Accent}]PopMark[/]")),
-            Align.Center(new Markup($"[{Muted}]Paste a YouTube playlist URL[/]")),
-            Align.Center(new Markup($"[{Muted}]or search for music[/]")),
-            new Text(""),
-            Align.Center(new Markup($"[{Accent}]add <url>[/]")));
-
-        return new Panel(rows)
-            .Border(BoxBorder.Square)
-            .BorderStyle(Style.Parse(PanelBorder))
-            .Padding(2, 2)
-            .Expand();
-    }
-
-    private static string StatusMarkup(PlaybackStatus status) =>
-        status switch
-        {
-            PlaybackStatus.Playing => $"[{SuccessColor}]Playing[/]",
-            PlaybackStatus.Paused => $"[{Accent}]Paused[/]",
-            PlaybackStatus.Loading => $"[{Secondary}]Loading[/]",
-            PlaybackStatus.Detached => $"[{Secondary}]Detached[/]",
-            _ => $"[{Muted}]Stopped[/]"
-        };
-
-    private static string MiniStatusMarkup(PlaybackStatus status) =>
-        status switch
-        {
-            PlaybackStatus.Playing => $"[{SuccessColor}]Playing[/]",
-            PlaybackStatus.Loading => $"[{Secondary}]Loading[/]",
-            PlaybackStatus.Paused => $"[{Accent}]Paused[/]",
-            PlaybackStatus.Detached => $"[{Secondary}]Detached[/]",
-            _ => $"[{Muted}]Stopped[/]"
-        };
-
-    private static string ActivityMarkup(PlaybackStatus status) =>
-        status switch
-        {
-            PlaybackStatus.Playing => $"[{SuccessColor}]Active[/]",
-            PlaybackStatus.Loading => $"[{Secondary}]Loading metadata[/]",
-            PlaybackStatus.Paused => $"[{Accent}]Paused[/]",
-            PlaybackStatus.Detached => $"[{Secondary}]Detached to mpv[/]",
-            _ => $"[{Chrome}]Idle[/]"
-        };
-
-    private static string BuildVisualizer(PlaybackStatus status, int? barCount = null)
-    {
-        var width = barCount ?? Math.Clamp(GetWindowSize().Width / 3, 18, 42);
-        var visualizer = BuildVisualizerText(status, width);
-
-        var color = status switch
-        {
-            PlaybackStatus.Paused => Muted,
-            PlaybackStatus.Playing or PlaybackStatus.Loading => SuccessColor,
-            _ => Chrome
-        };
-
-        return $"[{color}]{visualizer}[/]";
-    }
-
-    private static string BuildVisualizerText(PlaybackStatus status, int barCount)
-    {
-        var width = Math.Max(1, barCount);
-        if (status == PlaybackStatus.Paused)
-            return string.Join(' ', Enumerable.Repeat("▃", Math.Min(width, 18)));
-
-        if (status is not (PlaybackStatus.Playing or PlaybackStatus.Loading))
-            return BuildIdleWave(Math.Min(width, 24));
-
-        var tick = Environment.TickCount64 / 95;
-        var bars = Enumerable.Range(0, width)
-            .Select(i =>
-            {
-                var phase = (int)((tick + (i * 3) + ((i % 5) * 2)) % VisualizerBars.Length);
-                return VisualizerBars[phase];
-            });
-
-        return string.Join(' ', bars);
-    }
-
-    private static string BuildIdleWave(int width)
-    {
-        var tick = Environment.TickCount64 / 260;
-        var output = Enumerable.Range(0, width)
-            .Select(i => (i + tick) % 7 == 0 ? "▂" : "▁");
-
-        return string.Join(' ', output);
-    }
-
-    private static int MiniVisualizerBarCount() =>
-        Math.Clamp((MiniWidgetWidth - 12) / 2, 8, 16);
-
-    private static int FullVisualizerBarCount() =>
-        Math.Clamp(GetWindowSize().Width / 4, 14, 34);
-
-    private static IRenderable BuildPromptSuggestions()
-    {
-        var suggestions = new Markup(
-            $"[{Muted}]try[/] [{Accent}]add <url>[/]  [{Muted}]play/pause[/]  [{Accent}]next[/]  [{Muted}]mini[/]  [{Accent}]help[/]  [{Muted}]q[/]");
-
-        return new Panel(suggestions)
-            .Border(BoxBorder.None)
-            .Padding(0, 0, 0, 0);
-    }
-
-    private static void RenderPrompt(string input)
-    {
-        AnsiConsole.Markup($"[bold {Accent}]popmark[/][{Muted}] >[/] ");
-        Console.Write(input);
-    }
-
     private static int QueueCount(PlayerSnapshot snapshot) =>
         snapshot.Pending.Count + (snapshot.Current is null ? 0 : 1);
-
-    private static string ResolveSubtitle(string title)
-    {
-        var separators = new[] { " performs ", " - ", " | " };
-        foreach (var separator in separators)
-        {
-            var index = title.IndexOf(separator, StringComparison.OrdinalIgnoreCase);
-            if (index > 0 && index + separator.Length < title.Length)
-                return TrimForWidget(title[(index + separator.Length)..].Trim(' ', '"'), 58);
-        }
-
-        return "Unknown artist";
-    }
-
-    private static string ResolveSourceName(Track? track)
-    {
-        if (track is null)
-            return "None";
-
-        return track.Url.Contains("youtu", StringComparison.OrdinalIgnoreCase)
-            ? "YouTube"
-            : "Local";
-    }
 
     private static string FormatDuration(TimeSpan? duration)
     {
@@ -657,29 +891,6 @@ public static class ConsoleHelper
         return duration.Value.TotalHours >= 1
             ? duration.Value.ToString(@"h\:mm\:ss")
             : duration.Value.ToString(@"m\:ss");
-    }
-
-    private static string BuildProgressBar(double progress, int width)
-    {
-        var clamped = Math.Clamp(progress, 0, 1);
-        var filled = (int)Math.Round(width * clamped);
-        var empty = Math.Max(0, width - filled);
-        return $"{new string('█', filled)}{new string('░', empty)}";
-    }
-
-    private static string BuildFullProgressLine(PlayerSnapshot snapshot)
-    {
-        var width = Math.Clamp(GetWindowSize().Width - 28, 18, 42);
-        return $"{BuildProgressBar(ProgressRatio(snapshot), width)} {FormatDuration(snapshot.Elapsed)} / {FormatDuration(snapshot.Current?.Duration)}";
-    }
-
-    private static string CenterText(string text, int width)
-    {
-        if (text.Length >= width)
-            return text;
-
-        var left = (width - text.Length) / 2;
-        return $"{new string(' ', left)}{text}";
     }
 
     private static double ProgressRatio(PlayerSnapshot snapshot)
@@ -697,7 +908,9 @@ public static class ConsoleHelper
         Func<PlayerSnapshot>? snapshotProvider,
         Func<string>? noticeProvider,
         Func<bool>? miniModeProvider,
-        Func<bool>? helpModeProvider)
+        Func<bool>? helpModeProvider,
+        string input,
+        bool includeElapsed)
     {
         if (snapshotProvider is null || noticeProvider is null)
             return null;
@@ -711,6 +924,10 @@ public static class ConsoleHelper
             .Append(snapshot.Status)
             .Append('|')
             .Append(noticeProvider())
+            .Append('|')
+            .Append(input)
+            .Append('|')
+            .Append(includeElapsed ? snapshot.Elapsed?.TotalSeconds.ToString("0") : "static-input")
             .Append('|');
 
         AppendTrack(builder, snapshot.Current);
@@ -900,6 +1117,8 @@ public static class ConsoleHelper
     {
         try
         {
+            ResetFrameCache();
+
             if (!Console.IsOutputRedirected)
             {
                 Console.Write("\u001b[H\u001b[2J\u001b[3J");
@@ -912,5 +1131,12 @@ public static class ConsoleHelper
         {
             AnsiConsole.Clear();
         }
+    }
+
+    private static void ResetFrameCache()
+    {
+        _lastRenderedLines = null;
+        _lastRenderedWidth = 0;
+        _lastRenderedHeight = 0;
     }
 }

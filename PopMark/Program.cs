@@ -67,6 +67,7 @@ internal static class Program
 
             var (lastWidth, lastHeight) = ConsoleHelper.GetWindowSize();
             var keepRunning = true;
+            ConsoleHelper.EnterInteractiveScreen();
 
             while (keepRunning)
             {
@@ -136,6 +137,7 @@ internal static class Program
         finally
         {
             ConsoleHelper.ResetCursorStyle();
+            ConsoleHelper.LeaveInteractiveScreen();
         }
     }
 
@@ -207,9 +209,22 @@ internal static class Program
                 await player.StopAsync(clearQueue: true);
                 return false;
 
+            case "clear-playlist":
+            case "clearplaylist":
+            case "clear-queue":
+            case "clearqueue":
+                await player.ClearPlaylistAsync();
+                return false;
+
             case "queue":
             case "ls":
             case "status":
+                if (args.Length > 1 && args[1].Equals("clear", StringComparison.OrdinalIgnoreCase))
+                {
+                    await player.ClearPlaylistAsync();
+                    return false;
+                }
+
                 player.LastMessage = player.CreateSnapshot().Current is null
                     ? "Nothing is playing."
                     : $"Current track: {player.CreateSnapshot().Current!.Title}";
@@ -217,6 +232,14 @@ internal static class Program
 
             case "cls":
             case "clear":
+                if (args.Length > 1 &&
+                    (args[1].Equals("playlist", StringComparison.OrdinalIgnoreCase) ||
+                     args[1].Equals("queue", StringComparison.OrdinalIgnoreCase)))
+                {
+                    await player.ClearPlaylistAsync();
+                    return false;
+                }
+
                 player.LastMessage = "Screen refreshed.";
                 return false;
 

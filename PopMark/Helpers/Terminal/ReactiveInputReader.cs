@@ -116,6 +116,9 @@ internal static class ReactiveInputReader
 
             if (buffer.Length == 0)
             {
+                if (IsSpaceKey(key))
+                    return ReturnWithSize("play", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
+
                 if (key.KeyChar == ']')
                     return ReturnWithSize(ResolveRepeatedBracketShortcut(']', "next"), ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
 
@@ -124,8 +127,6 @@ internal static class ReactiveInputReader
 
                 switch (key.Key)
                 {
-                    case ConsoleKey.Spacebar:
-                        return ReturnWithSize("play", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
                     case ConsoleKey.RightArrow:
                         return ReturnWithSize("__seek-forward", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
                     case ConsoleKey.LeftArrow:
@@ -361,6 +362,10 @@ internal static class ReactiveInputReader
     private static bool IsBackspaceKey(ConsoleKeyInfo key) =>
         key.Key == ConsoleKey.Backspace ||
         key.KeyChar is '\b' or '\u007f';
+
+    private static bool IsSpaceKey(ConsoleKeyInfo key) =>
+        key.Key == ConsoleKey.Spacebar ||
+        key.KeyChar == ' ';
 
     private static string? BuildScreenSignature(
         Func<PlayerSnapshot>? snapshotProvider,

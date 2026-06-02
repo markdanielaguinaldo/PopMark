@@ -6,6 +6,8 @@ PopMark expands links with `yt-dlp`, streams audio through `mpv`, and keeps your
 
 ![PopMark cover art](PopMark/Files/Popmark%20Cover.png)
 
+![PopMark demo](PopMark/Files/Popmark.gif)
+
 ## Features
 
 - Add YouTube videos or playlists from the terminal

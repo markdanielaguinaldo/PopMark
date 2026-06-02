@@ -259,6 +259,81 @@ public sealed class PlaybackQueue
         NotifySnapshotChanged();
     }
 
+    public async Task PlayAtQueueIndexAsync(int trackIndex, CancellationToken cancellationToken = default)
+    {
+        Track? target = null;
+        int volumePercent = DefaultVolumePercent;
+        var alreadyPlaying = false;
+        var resumeCurrent = false;
+
+        lock (_syncRoot)
+        {
+            var playlist = BuildPlaylistLocked();
+            if (trackIndex < 0 || trackIndex >= playlist.Count)
+            {
+                LastMessage = "No track at that playlist row.";
+                return;
+            }
+
+            var currentIndex = _current is null ? -1 : _previous.Count;
+            if (trackIndex == currentIndex && _current is not null)
+            {
+                if (_status == PlaybackStatus.Playing)
+                {
+                    alreadyPlaying = true;
+                    LastMessage = $"Already playing: {_current.Title}";
+                }
+                else if (_status == PlaybackStatus.Paused)
+                {
+                    resumeCurrent = true;
+                }
+            }
+
+            if (!alreadyPlaying && !resumeCurrent)
+            {
+                target = playlist[trackIndex];
+                var previousTracks = playlist.Take(trackIndex).ToList();
+                var pendingTracks = playlist.Skip(trackIndex + 1).ToList();
+
+                _previous.Clear();
+                foreach (var track in previousTracks)
+                    _previous.Push(track);
+
+                _pending.Clear();
+                foreach (var track in pendingTracks)
+                    _pending.Enqueue(track);
+
+                _current = target;
+                _status = PlaybackStatus.Playing;
+                volumePercent = _volumePercent;
+                ResetPositionLocked(startRunning: true);
+            }
+        }
+
+        if (alreadyPlaying)
+        {
+            NotifySnapshotChanged();
+            return;
+        }
+
+        if (resumeCurrent)
+        {
+            await ResumeAsync(cancellationToken);
+            return;
+        }
+
+        if (target is null)
+        {
+            LastMessage = "No track at that playlist row.";
+            NotifySnapshotChanged();
+            return;
+        }
+
+        await _mpv.PlayAsync(target, volumePercent, cancellationToken);
+        LastMessage = $"Now playing: {target.Title}";
+        NotifySnapshotChanged();
+    }
+
     public async Task SeekRelativeAsync(int seconds, CancellationToken cancellationToken = default)
     {
         if (!HasCurrentTrack())
@@ -506,6 +581,16 @@ public sealed class PlaybackQueue
 
         foreach (var pendingTrack in existing)
             _pending.Enqueue(pendingTrack);
+    }
+
+    private List<Track> BuildPlaylistLocked()
+    {
+        var playlist = _previous.Reverse().ToList();
+        if (_current is not null)
+            playlist.Add(_current);
+
+        playlist.AddRange(_pending);
+        return playlist;
     }
 
     private TimeSpan ResolveElapsedLocked()

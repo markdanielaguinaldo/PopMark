@@ -9,9 +9,11 @@ internal static class TerminalStyles
     public const string Bold = "\u001b[1m";
     public const string AnsiAccent = "\u001b[38;2;0;212;255m";
     public const string AnsiSecondary = "\u001b[38;2;139;92;246m";
+    public const string AnsiGreen = "\u001b[38;2;92;214;116m";
     public const string AnsiMuted = "\u001b[38;2;150;150;150m";
     public const string AnsiChrome = "\u001b[38;2;82;82;82m";
     public const string AnsiWhite = "\u001b[38;2;245;245;245m";
+    public const string AnsiDirtyWhite = "\u001b[38;2;218;216;204m";
 
     public static readonly string[] VisualizerBars = ["▁", "▂", "▃", "▄", "▅", "▆", "▇"];
 }

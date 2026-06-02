@@ -120,6 +120,14 @@ internal static class Program
 
                 try
                 {
+                    if (TryResolvePlaylistClickCommand(parsedArgs[0], player.CreateSnapshot(), out var trackIndex))
+                    {
+                        await player.PlayAtQueueIndexAsync(trackIndex);
+                        notice = player.LastMessage;
+                        (lastWidth, lastHeight) = ConsoleHelper.GetWindowSize();
+                        continue;
+                    }
+
                     if (TryResolveProgressClickCommand(parsedArgs[0], player.CreateSnapshot(), out var timestamp))
                     {
                         await player.SeekAbsoluteAsync(timestamp);
@@ -553,14 +561,35 @@ internal static class Program
     private static bool TryResolveProgressClickCommand(string command, PlayerSnapshot snapshot, out TimeSpan timestamp)
     {
         timestamp = TimeSpan.Zero;
-        if (!command.StartsWith("__progress-click:", StringComparison.Ordinal))
+        if (!TryResolveMousePointCommand(command, out var x, out var y))
             return false;
+
+        return ConsoleHelper.TryResolveProgressClick(x, y, snapshot, out timestamp);
+    }
+
+    private static bool TryResolvePlaylistClickCommand(string command, PlayerSnapshot snapshot, out int trackIndex)
+    {
+        trackIndex = -1;
+        if (!TryResolveMousePointCommand(command, out var x, out var y))
+            return false;
+
+        return ConsoleHelper.TryResolvePlaylistClick(x, y, snapshot, out trackIndex);
+    }
+
+    private static bool TryResolveMousePointCommand(string command, out int x, out int y)
+    {
+        x = 0;
+        y = 0;
+        if (!command.StartsWith("__mouse-click:", StringComparison.Ordinal) &&
+            !command.StartsWith("__progress-click:", StringComparison.Ordinal))
+        {
+            return false;
+        }
 
         var parts = command.Split(':');
         return parts.Length == 3 &&
-               int.TryParse(parts[1], out var x) &&
-               int.TryParse(parts[2], out var y) &&
-               ConsoleHelper.TryResolveProgressClick(x, y, snapshot, out timestamp);
+               int.TryParse(parts[1], out x) &&
+               int.TryParse(parts[2], out y);
     }
 
     private static bool IsLikelyUrl(string value) =>

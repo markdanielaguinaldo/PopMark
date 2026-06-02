@@ -9,6 +9,7 @@ internal static class TerminalFrameRenderer
     private static int _lastRenderedWidth;
     private static int _lastRenderedHeight;
     private static ProgressHitbox? _lastProgressHitbox;
+    private static IReadOnlyList<PlaylistHitbox> _lastPlaylistHitboxes = [];
 
     public static void DrawCommandCenter(PlayerSnapshot snapshot, string notice, bool showHelp = false, int queueScrollOffset = 0, bool showControls = false)
     {
@@ -114,12 +115,29 @@ internal static class TerminalFrameRenderer
         return true;
     }
 
+    public static bool TryResolvePlaylistClick(int x, int y, PlayerSnapshot snapshot, out int trackIndex)
+    {
+        trackIndex = -1;
+        var totalTracks = QueueCount(snapshot);
+        var hitbox = _lastPlaylistHitboxes.FirstOrDefault(candidate =>
+            y == candidate.Y &&
+            x >= candidate.X &&
+            x < candidate.X + candidate.Width);
+
+        if (hitbox is null || hitbox.TrackIndex < 0 || hitbox.TrackIndex >= totalTracks)
+            return false;
+
+        trackIndex = hitbox.TrackIndex;
+        return true;
+    }
+
     public static void ResetFrameCache()
     {
         _lastRenderedLines = null;
         _lastRenderedWidth = 0;
         _lastRenderedHeight = 0;
         _lastProgressHitbox = null;
+        _lastPlaylistHitboxes = [];
     }
 
     private static List<string> BuildTerminalFrame(RenderContext context) =>
@@ -134,6 +152,7 @@ internal static class TerminalFrameRenderer
         var prompt = PromptComponent(context.Input, width);
         var available = Math.Max(0, height - 1);
         var lines = new List<string>();
+        _lastPlaylistHitboxes = [];
         if (available == 0)
         {
             _lastProgressHitbox = null;
@@ -158,7 +177,7 @@ internal static class TerminalFrameRenderer
                 : Math.Min(7, Math.Max(4, mainBudget / 2));
             var queueHeight = Math.Max(0, mainBudget - nowHeight);
             lines.AddRange(NowPlayingComponent(context, width, nowHeight));
-            lines.AddRange(QueueComponent(context.Snapshot, width, queueHeight, context.QueueScrollOffset));
+            lines.AddRange(QueueComponent(context.Snapshot, width, queueHeight, context.QueueScrollOffset, lines.Count));
         }
 
         if (playbackHeight > 0)
@@ -193,10 +212,12 @@ internal static class TerminalFrameRenderer
         if (available == 0)
         {
             _lastProgressHitbox = null;
+            _lastPlaylistHitboxes = [];
             return [prompt];
         }
 
         _lastProgressHitbox = null;
+        _lastPlaylistHitboxes = [];
 
         var blockWidth = Math.Min(width, Math.Max(42, Math.Min(72, width - 2)));
         var leftPad = Math.Max(0, (width - blockWidth) / 2);
@@ -250,7 +271,7 @@ internal static class TerminalFrameRenderer
         return Box("Now Playing", rows, width, height, TerminalStyles.AnsiAccent);
     }
 
-    private static IReadOnlyList<string> QueueComponent(PlayerSnapshot snapshot, int width, int height, int scrollOffset)
+    private static IReadOnlyList<string> QueueComponent(PlayerSnapshot snapshot, int width, int height, int scrollOffset, int topLineIndex)
     {
         if (height <= 0)
             return [];
@@ -259,9 +280,20 @@ internal static class TerminalFrameRenderer
         var playlist = BuildPlaylistRows(snapshot);
         var maxOffset = Math.Max(0, playlist.Count - visibleRows);
         var offset = Math.Clamp(scrollOffset, 0, maxOffset);
-        var rows = playlist
+        var visiblePlaylistRows = playlist
             .Skip(offset)
             .Take(visibleRows)
+            .ToList();
+        var rows = visiblePlaylistRows
+            .Select(row => row.Text)
+            .ToList();
+
+        _lastPlaylistHitboxes = visiblePlaylistRows
+            .Select((row, rowOffset) => new PlaylistHitbox(
+                row.TrackIndex,
+                X: 3,
+                Y: topLineIndex + rowOffset + 2,
+                Width: Math.Max(1, width - 4)))
             .ToList();
 
         if (playlist.Count == 0)
@@ -274,31 +306,59 @@ internal static class TerminalFrameRenderer
         return Box(title, rows, width, height, TerminalStyles.AnsiChrome);
     }
 
-    private static IReadOnlyList<string> BuildPlaylistRows(PlayerSnapshot snapshot)
+    private static IReadOnlyList<PlaylistRow> BuildPlaylistRows(PlayerSnapshot snapshot)
     {
-        var rows = new List<string>();
-        var index = 1;
+        var rows = new List<PlaylistRow>();
+        var index = 0;
 
         foreach (var track in snapshot.Previous)
         {
-            rows.Add($"{TerminalStyles.AnsiMuted}{index,2}. done  {track.Title}{TerminalStyles.Reset}");
+            rows.Add(new PlaylistRow(
+                index,
+                PlaylistTrackRow(index + 1, track.Title, PlaylistTrackState.Done)));
             index++;
         }
 
         if (snapshot.Current is not null)
         {
-            rows.Add($"{TerminalStyles.AnsiAccent}{index,2}. >     {snapshot.Current.Title}{TerminalStyles.Reset}");
+            rows.Add(new PlaylistRow(
+                index,
+                PlaylistTrackRow(index + 1, snapshot.Current.Title, PlaylistTrackState.Current)));
             index++;
         }
 
         foreach (var track in snapshot.Pending)
         {
-            rows.Add($"{TerminalStyles.AnsiWhite}{index,2}. next  {track.Title}{TerminalStyles.Reset}");
+            rows.Add(new PlaylistRow(
+                index,
+                PlaylistTrackRow(index + 1, track.Title, PlaylistTrackState.Next)));
             index++;
         }
 
         return rows;
     }
+
+    private static string PlaylistTrackRow(int displayIndex, string title, PlaylistTrackState state)
+    {
+        var titleStyle = state switch
+        {
+            PlaylistTrackState.Done => TerminalStyles.AnsiMuted,
+            PlaylistTrackState.Current => $"{TerminalStyles.Bold}{TerminalStyles.AnsiWhite}",
+            PlaylistTrackState.Next => TerminalStyles.AnsiDirtyWhite,
+            _ => TerminalStyles.AnsiDirtyWhite
+        };
+
+        return $"{TerminalStyles.AnsiMuted}{displayIndex,2}.{TerminalStyles.Reset} {PlaylistStatusRail(state)} {titleStyle}{title}{TerminalStyles.Reset}";
+    }
+
+    private static string PlaylistStatusRail(PlaylistTrackState state) =>
+        state switch
+        {
+            PlaylistTrackState.Done => $"{TerminalStyles.AnsiMuted}✓──{TerminalStyles.Reset}",
+            PlaylistTrackState.Current => $"{TerminalStyles.AnsiGreen}▶──{TerminalStyles.Reset}",
+            PlaylistTrackState.Next => $"{TerminalStyles.AnsiDirtyWhite}›──{TerminalStyles.Reset}",
+            _ => $"{TerminalStyles.AnsiChrome}›──{TerminalStyles.Reset}"
+        };
 
     private static IReadOnlyList<string> PlaybackStripComponent(RenderContext context, int width, int height)
     {
@@ -344,10 +404,11 @@ internal static class TerminalFrameRenderer
                     $"{TerminalStyles.AnsiAccent}[ / ]{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}previous or next track; repeat quickly to jump multiple tracks{TerminalStyles.Reset}",
                     $"{TerminalStyles.AnsiAccent}- / ={TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}decrease or increase volume by 10%{TerminalStyles.Reset}",
                     $"{TerminalStyles.AnsiAccent}Mouse wheel{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}scroll playlist when supported{TerminalStyles.Reset}",
+                    $"{TerminalStyles.AnsiAccent}Click playlist song{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}play that song directly{TerminalStyles.Reset}",
                     $"{TerminalStyles.AnsiAccent}Click progress bar{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}jump to that timestamp when supported{TerminalStyles.Reset}"
                 ],
                 width,
-                11,
+                12,
                 TerminalStyles.AnsiChrome);
         }
 
@@ -612,6 +673,17 @@ internal static class TerminalFrameRenderer
         var progressWidth = Math.Max(8, contentWidth - TerminalText.VisibleLength(metrics) - 3);
         return new ProgressHitbox(X: 3, Y: y, Width: progressWidth);
     }
+
+    private enum PlaylistTrackState
+    {
+        Done,
+        Current,
+        Next
+    }
+
+    private sealed record PlaylistRow(int TrackIndex, string Text);
+
+    private sealed record PlaylistHitbox(int TrackIndex, int X, int Y, int Width);
 
     private sealed record ProgressHitbox(int X, int Y, int Width);
 }

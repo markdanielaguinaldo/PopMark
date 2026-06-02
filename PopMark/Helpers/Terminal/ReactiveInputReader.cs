@@ -367,7 +367,7 @@ internal static class ReactiveInputReader
             return (button & 1) == 0 ? "__queue-up" : "__queue-down";
 
         return (button & 3) == 0
-            ? $"__progress-click:{x}:{y}"
+            ? $"__mouse-click:{x}:{y}"
             : string.Empty;
     }
 

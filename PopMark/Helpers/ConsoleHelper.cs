@@ -26,6 +26,9 @@ public static class ConsoleHelper
     public static bool TryResolveProgressClick(int x, int y, PlayerSnapshot snapshot, out TimeSpan timestamp) =>
         TerminalFrameRenderer.TryResolveProgressClick(x, y, snapshot, out timestamp);
 
+    public static bool TryResolvePlaylistClick(int x, int y, PlayerSnapshot snapshot, out int trackIndex) =>
+        TerminalFrameRenderer.TryResolvePlaylistClick(x, y, snapshot, out trackIndex);
+
     public static string ReadReactiveInput(
         ref int lastWidth,
         ref int lastHeight,

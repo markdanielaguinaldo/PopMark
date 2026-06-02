@@ -84,4 +84,5 @@ dotnet run --project .\PopMark\PopMark.csproj -- play-test "https://www.youtube.
 | `Up Arrow` / `Down Arrow` / mouse wheel | Scroll the playlist panel by one row |
 | `PageUp` / `PageDown` | Scroll the playlist panel faster |
 | `Home` / `End` | Jump to the top or bottom of the playlist |
+| Click playlist song | Play that song directly |
 | Click progress bar | Jump to that timestamp when the terminal supports mouse input |

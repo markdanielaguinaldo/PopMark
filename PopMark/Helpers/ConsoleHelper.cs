@@ -451,7 +451,7 @@ public static class ConsoleHelper
             return [prompt];
 
         var footer = FooterComponent(width, context.ShowHelp);
-        var playbackHeight = available >= 8 ? 4 : available >= 5 ? 3 : 0;
+        var playbackHeight = available >= 9 ? 5 : available >= 8 ? 4 : available >= 5 ? 3 : 0;
         var footerHeight = Math.Min(footer.Count, Math.Max(0, available - 1 - playbackHeight));
         var mainBudget = Math.Max(0, available - 1 - playbackHeight - footerHeight);
 
@@ -498,7 +498,7 @@ public static class ConsoleHelper
 
         var blockWidth = Math.Min(width, Math.Max(42, Math.Min(72, width - 2)));
         var leftPad = Math.Max(0, (width - blockWidth) / 2);
-        var blockHeight = Math.Min(7, available);
+        var blockHeight = Math.Min(8, available);
         var block = MiniPlayerComponent(context, blockWidth, blockHeight)
             .Select(line => $"{new string(' ', leftPad)}{line}")
             .ToList();
@@ -583,9 +583,13 @@ public static class ConsoleHelper
         var progressWidth = Math.Max(8, contentWidth - VisibleLength(time) - 3);
         var rows = new List<string>
         {
-            $"{ProgressBar(ProgressRatio(context.Snapshot), progressWidth)} {AnsiMuted}{time}{Reset}",
-            Visualizer(context.Snapshot.Status, context.AnimationFrame, contentWidth)
+            $"{ProgressBar(ProgressRatio(context.Snapshot), progressWidth)} {AnsiMuted}{time}{Reset}"
         };
+
+        if (height >= 5)
+            rows.Add(string.Empty);
+
+        rows.Add(ScanlineVisualizer(context.Snapshot.Status, context.AnimationFrame, contentWidth));
 
         return Box("Playback", rows, width, height, AnsiChrome);
     }
@@ -596,7 +600,7 @@ public static class ConsoleHelper
         {
             return
             [
-                PadAnsiAware($"{AnsiMuted}SPACE{Reset} play/pause {AnsiChrome}|{Reset} {AnsiMuted}N{Reset} next {AnsiChrome}|{Reset} {AnsiMuted}seek +/-30{Reset} {AnsiChrome}|{Reset} {AnsiMuted}clear playlist{Reset} {AnsiChrome}|{Reset} {AnsiMuted}M{Reset} mini {AnsiChrome}|{Reset} {AnsiMuted}Q{Reset} quit", width)
+                PadAnsiAware($"{AnsiMuted}SPACE{Reset} play/pause {AnsiChrome}|{Reset} {AnsiMuted}N{Reset} next {AnsiChrome}|{Reset} {AnsiMuted}P +/-30{Reset} seek {AnsiChrome}|{Reset} {AnsiMuted}clear playlist{Reset} {AnsiChrome}|{Reset} {AnsiMuted}M{Reset} mini {AnsiChrome}|{Reset} {AnsiMuted}Q{Reset} quit", width)
             ];
         }
 
@@ -605,7 +609,7 @@ public static class ConsoleHelper
             [
                 $"{AnsiAccent}add <url>{Reset}  {AnsiMuted}load a YouTube video or playlist{Reset}",
                 $"{AnsiAccent}play/pause{Reset}  {AnsiMuted}toggle playback{Reset}   {AnsiAccent}next{Reset}  {AnsiMuted}skip track{Reset}",
-                $"{AnsiAccent}seek <seconds>{Reset}  {AnsiMuted}relative seek, for example seek 30 or seek -30{Reset}",
+                $"{AnsiAccent}p <seconds>{Reset}  {AnsiMuted}relative seek, for example p 30 or p -30{Reset}",
                 $"{AnsiAccent}clear playlist{Reset}  {AnsiMuted}stop playback and empty the queue{Reset}",
                 $"{AnsiAccent}mini{Reset}  {AnsiMuted}compact view{Reset}   {AnsiAccent}cls{Reset}  {AnsiMuted}redraw{Reset}   {AnsiAccent}q{Reset}  {AnsiMuted}quit{Reset}"
             ],
@@ -645,10 +649,14 @@ public static class ConsoleHelper
         {
             $"{Bold}{AnsiAccent}PopMark{Reset} {StatusPill(snapshot.Status)}",
             $"{AnsiWhite}{TrimForWidget(title, contentWidth)}{Reset}",
-            $"{ProgressBar(ProgressRatio(snapshot), Math.Max(8, contentWidth - VisibleLength(time) - 3))} {AnsiMuted}{time}{Reset}",
-            Visualizer(snapshot.Status, context.AnimationFrame, contentWidth),
-            $"{AnsiMuted}{TrimForWidget(context.Notice, contentWidth)}{Reset}"
+            $"{ProgressBar(ProgressRatio(snapshot), Math.Max(8, contentWidth - VisibleLength(time) - 3))} {AnsiMuted}{time}{Reset}"
         };
+
+        if (height >= 8)
+            rows.Add(string.Empty);
+
+        rows.Add(CompactBarsVisualizer(snapshot.Status, context.AnimationFrame, contentWidth));
+        rows.Add($"{AnsiMuted}{TrimForWidget(context.Notice, contentWidth)}{Reset}");
 
         return Box("Mini", rows, width, height, AnsiAccent);
     }
@@ -720,10 +728,37 @@ public static class ConsoleHelper
         return $"{AnsiAccent}{new string('█', filled)}{AnsiChrome}{new string('░', empty)}{Reset}";
     }
 
-    private static string Visualizer(PlaybackStatus status, int frame, int width)
+    private static string ScanlineVisualizer(PlaybackStatus status, int frame, int width)
     {
         width = Math.Max(1, width);
-        var barCount = Math.Max(1, (width + 1) / 2);
+        var style = status switch
+        {
+            PlaybackStatus.Playing or PlaybackStatus.Loading => AnsiAccent,
+            PlaybackStatus.Paused => AnsiMuted,
+            _ => AnsiChrome
+        };
+
+        if (status is not (PlaybackStatus.Playing or PlaybackStatus.Loading))
+            return $"{style}{new string('─', width)}{Reset}";
+
+        var segmentWidth = Math.Clamp(width / 5, 4, 12);
+        var travel = Math.Max(1, width - segmentWidth);
+        var position = frame % (travel + 1);
+        var output = new StringBuilder();
+        output.Append(AnsiChrome);
+        output.Append(new string('─', position));
+        output.Append(style);
+        output.Append(new string('━', segmentWidth));
+        output.Append(AnsiChrome);
+        output.Append(new string('─', Math.Max(0, width - position - segmentWidth)));
+        output.Append(Reset);
+        return TrimAnsiAware(output.ToString(), width);
+    }
+
+    private static string CompactBarsVisualizer(PlaybackStatus status, int frame, int width)
+    {
+        width = Math.Max(1, width);
+        var barCount = Math.Max(1, width);
         var style = status switch
         {
             PlaybackStatus.Playing or PlaybackStatus.Loading => AnsiAccent,
@@ -734,16 +769,16 @@ public static class ConsoleHelper
         var bars = Enumerable.Range(0, barCount).Select(i =>
         {
             if (status == PlaybackStatus.Paused)
-                return "▃";
+                return "▄";
 
             if (status is not (PlaybackStatus.Playing or PlaybackStatus.Loading))
-                return "▁";
+                return "▂";
 
             var phase = (frame + (i * 3) + ((i % 5) * 2)) % VisualizerBars.Length;
             return VisualizerBars[phase];
         });
 
-        return TrimAnsiAware($"{style}{string.Join(' ', bars)}{Reset}", width);
+        return TrimAnsiAware($"{style}{string.Concat(bars)}{Reset}", width);
     }
 
     private static string PadAnsiAware(string value, int width)

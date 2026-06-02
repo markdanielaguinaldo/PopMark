@@ -55,7 +55,7 @@ dotnet run --project .\PopMark\PopMark.csproj -- play-test "https://www.youtube.
 | `add <url>` | Add a YouTube video or playlist |
 | `play` / `pause` | Toggle playback |
 | `next` | Skip to the next track |
-| `seek <seconds>` | Seek relative to the current position |
+| `p <seconds>` | Seek relative to the current position, for example `p 30` or `p -30` |
 | `clear playlist` | Stop playback and empty the queue |
 | `mini` | Toggle compact player mode |
 | `cls` / `clear` | Redraw the terminal UI |

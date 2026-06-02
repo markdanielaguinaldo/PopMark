@@ -194,12 +194,13 @@ internal static class Program
                 await player.NextAsync();
                 return false;
 
+            case "p":
             case "seek":
             case "ff":
             case "rewind":
                 if (!TryResolveSeekSeconds(args, out var seekSeconds))
                 {
-                    player.LastMessage = "Usage: seek <seconds>, for example: seek 30 or seek -30.";
+                    player.LastMessage = "Usage: p <seconds>, for example: p 30 or p -30.";
                     return false;
                 }
 
@@ -323,7 +324,7 @@ internal static class Program
         if (showStatus && dependencies.ArePlaybackDependenciesAvailable())
         {
             await AnsiConsole.Status()
-                .Spinner(Spinner.Known.BouncingBar)
+                .Spinner(Spinner.Known.SquareCorners)
                 .SpinnerStyle(Style.Parse("deepskyblue1"))
                 .StartAsync("Adding URL to queue...", async ctx =>
                 {
@@ -355,7 +356,7 @@ internal static class Program
         if (showStatus)
         {
             await AnsiConsole.Status()
-                .Spinner(Spinner.Known.BouncingBar)
+                .Spinner(Spinner.Known.SquareCorners)
                 .SpinnerStyle(Style.Parse("deepskyblue1"))
                 .StartAsync("Loading YouTube metadata with yt-dlp...", async ctx =>
                 {

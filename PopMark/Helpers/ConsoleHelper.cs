@@ -423,7 +423,7 @@ public static class ConsoleHelper
                           i >= _lastRenderedLines!.Count ||
                           !string.Equals(lines[i], _lastRenderedLines[i], StringComparison.Ordinal);
             if (changed)
-                output.Append("\u001b[2K").Append(PadAnsiAware(lines[i], width));
+                output.Append(PadAnsiAware(lines[i], width));
 
             if (i < lines.Count - 1)
                 output.Append("\u001b[1E");

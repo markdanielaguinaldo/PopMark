@@ -6,7 +6,7 @@ PopMark expands links with `yt-dlp`, streams audio through `mpv`, and keeps your
 
 ![PopMark cover art](PopMark/Files/Popmark%20Cover.png)
 
-![PopMark demo](PopMark/Files/Popmark.gif)
+
 
 ## Features
 
@@ -16,6 +16,10 @@ PopMark expands links with `yt-dlp`, streams audio through `mpv`, and keeps your
 - Toggle full and mini player views
 - Seek, skip, pause, resume, and clear the playlist
 - Install local playback tools without admin access
+
+## Demo
+
+![PopMark demo](PopMark/Files/Popmark.gif)
 
 ## Requirements
 

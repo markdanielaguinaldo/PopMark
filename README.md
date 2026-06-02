@@ -26,11 +26,7 @@ PopMark expands links with `yt-dlp`, streams audio through `mpv`, and keeps your
 - `yt-dlp`
 - `mpv`
 
-PopMark can install `yt-dlp` and portable `mpv` locally:
-
-```powershell
-dotnet run --project .\PopMark\PopMark.csproj -- deps
-```
+PopMark asks to install missing playback tools locally on first interactive run.
 
 Local tools are stored in `%LOCALAPPDATA%\PopMark\tools`.
 Queue state is stored in `%LOCALAPPDATA%\PopMark\queue.json`.
@@ -70,12 +66,21 @@ dotnet run --project .\PopMark\PopMark.csproj -- play-test "https://www.youtube.
 | --- | --- |
 | `add <url>` | Add a YouTube video or playlist |
 | `play` / `pause` | Toggle playback |
-| `next [count]` / `]` | Skip to the next track, or skip multiple tracks with a count. Repeat `]` quickly to jump multiple tracks. |
-| `prev [count]` / `previous [count]` / `[` | Return to the previous track, or go back multiple tracks with a count. Repeat `[` quickly to jump multiple tracks. |
-| `Left Arrow` / `Right Arrow` | Seek backward or forward by 10 seconds |
-| Click progress bar | Jump to that timestamp when the terminal supports mouse input |
-| `Up Arrow` / `Down Arrow` / mouse wheel | Scroll the playlist panel by one row |
-| `PageUp` / `PageDown` / `Home` / `End` | Scroll the playlist panel faster |
+| `next [count]` | Skip to the next track, or skip multiple tracks with a count |
+| `prev [count]` / `previous [count]` | Return to the previous track, or go back multiple tracks with a count |
 | `clear playlist` | Stop playback and empty the queue |
-| `cls` / `clear` | Redraw the terminal UI |
+| `help` | Show typed commands |
+| `controls` | Show keyboard and mouse controls |
 | `quit` | Stop playback and exit |
+
+## Controls
+
+| Control | Action |
+| --- | --- |
+| `Space` | Toggle playback when the command field is empty |
+| `[` / `]` | Previous or next track. Repeat quickly to jump multiple tracks. |
+| `Left Arrow` / `Right Arrow` | Seek backward or forward by 10 seconds |
+| `Up Arrow` / `Down Arrow` / mouse wheel | Scroll the playlist panel by one row |
+| `PageUp` / `PageDown` | Scroll the playlist panel faster |
+| `Home` / `End` | Jump to the top or bottom of the playlist |
+| Click progress bar | Jump to that timestamp when the terminal supports mouse input |

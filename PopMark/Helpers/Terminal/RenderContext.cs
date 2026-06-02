@@ -9,6 +9,7 @@ internal sealed record RenderContext(
     string Notice,
     string Input,
     bool ShowHelp,
+    bool ShowControls,
     bool MiniMode,
     int AnimationFrame,
     int QueueScrollOffset);

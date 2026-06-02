@@ -29,6 +29,7 @@ internal static class Program
         var history = new List<string>();
         var notice = "Ready. Add a YouTube video or playlist URL to start.";
         var showHelp = false;
+        var showControls = false;
         var queueScrollOffset = 0;
         player.LastMessage = notice;
         player.SnapshotChanged += QueueCacheStore.Save;
@@ -41,9 +42,6 @@ internal static class Program
                 notice = $"Cleared {clearedSessions} previous PopMark playback session(s).";
                 player.LastMessage = notice;
             }
-
-            if (args.Length > 0 && args[0].Equals("deps", StringComparison.OrdinalIgnoreCase))
-                return await RunDependencyInstallAsync(dependencies);
 
             if (TryParseNonInteractiveOptions(args, out var options))
                 return await RunNonInteractiveAsync(player, dependencies, options);
@@ -67,8 +65,18 @@ internal static class Program
             {
                 ConsoleHelper.ShowStartupSplash();
 
+                if (!dependencies.ArePlaybackDependenciesAvailable())
+                {
+                    player.LastMessage = await dependencies.EnsurePlaybackDependenciesAsync(
+                        promptToInstall: true,
+                        confirmInstall: true);
+                    notice = player.LastMessage;
+                }
+
                 var cachedQueue = QueueCacheStore.Load();
-                if (cachedQueue.Current is not null || cachedQueue.Pending.Count > 0)
+                if (cachedQueue.Current is not null ||
+                    cachedQueue.Pending.Count > 0 ||
+                    cachedQueue.Previous.Count > 0)
                 {
                     player.RestoreQueue(cachedQueue);
                     notice = player.LastMessage;
@@ -81,7 +89,7 @@ internal static class Program
 
             while (keepRunning)
             {
-                ConsoleHelper.DrawCommandCenter(player.CreateSnapshot(), player.LastMessage, showHelp, queueScrollOffset);
+                ConsoleHelper.DrawCommandCenter(player.CreateSnapshot(), player.LastMessage, showHelp, queueScrollOffset, showControls);
                 ConsoleHelper.UseBarCursor();
 
                 var input = ConsoleHelper.ReadReactiveInput(
@@ -92,7 +100,8 @@ internal static class Program
                     () => player.LastMessage,
                     null,
                     () => showHelp,
-                    () => queueScrollOffset);
+                    () => queueScrollOffset,
+                    () => showControls);
                 ConsoleHelper.ShowCursor();
 
                 if (string.IsNullOrWhiteSpace(input))
@@ -143,6 +152,10 @@ internal static class Program
                     showHelp = parsedArgs[0].Equals("help", StringComparison.OrdinalIgnoreCase) ||
                                parsedArgs[0].Equals("h", StringComparison.OrdinalIgnoreCase) ||
                                parsedArgs[0].Equals("?", StringComparison.OrdinalIgnoreCase);
+                    showControls = parsedArgs[0].Equals("controls", StringComparison.OrdinalIgnoreCase) ||
+                                   parsedArgs[0].Equals("control", StringComparison.OrdinalIgnoreCase);
+                    if (showControls)
+                        showHelp = false;
 
                     keepRunning = !await ProcessCommandAsync(
                         player,
@@ -187,7 +200,12 @@ internal static class Program
             case "help":
             case "h":
             case "?":
-                player.LastMessage = "Help is visible in the command center.";
+                player.LastMessage = "Commands are visible in the command center.";
+                return false;
+
+            case "controls":
+            case "control":
+                player.LastMessage = "Controls are visible in the command center.";
                 return false;
 
             case "add":
@@ -204,12 +222,6 @@ internal static class Program
                 }
 
                 await AddUrlAsync(player, dependencies, url, promptToInstallDependencies: true, confirmInstallDependencies: true, showStatus: true);
-                return false;
-
-            case "deps":
-            case "dependencies":
-            case "install-deps":
-                player.LastMessage = await dependencies.EnsurePlaybackDependenciesAsync(promptToInstall: true, confirmInstall: true);
                 return false;
 
             case "play":
@@ -256,36 +268,18 @@ internal static class Program
 
             case "clear-playlist":
             case "clearplaylist":
-            case "clear-queue":
-            case "clearqueue":
                 await player.ClearPlaylistAsync();
                 return false;
 
-            case "queue":
-            case "ls":
-            case "status":
-                if (args.Length > 1 && args[1].Equals("clear", StringComparison.OrdinalIgnoreCase))
-                {
-                    await player.ClearPlaylistAsync();
-                    return false;
-                }
-
-                player.LastMessage = player.CreateSnapshot().Current is null
-                    ? "Nothing is playing."
-                    : $"Current track: {player.CreateSnapshot().Current!.Title}";
-                return false;
-
-            case "cls":
             case "clear":
                 if (args.Length > 1 &&
-                    (args[1].Equals("playlist", StringComparison.OrdinalIgnoreCase) ||
-                     args[1].Equals("queue", StringComparison.OrdinalIgnoreCase)))
+                    args[1].Equals("playlist", StringComparison.OrdinalIgnoreCase))
                 {
                     await player.ClearPlaylistAsync();
                     return false;
                 }
 
-                player.LastMessage = "Screen refreshed.";
+                player.LastMessage = "Unknown command: clear. Type help to list commands.";
                 return false;
 
             case "quit":
@@ -404,27 +398,6 @@ internal static class Program
         }
 
         await player.AddUrlAsync(url);
-    }
-
-    private static async Task<int> RunDependencyInstallAsync(DependencyInstaller dependencies)
-    {
-        try
-        {
-            var message = await dependencies.EnsurePlaybackDependenciesAsync(promptToInstall: true, confirmInstall: false);
-            if (!dependencies.ArePlaybackDependenciesAvailable())
-            {
-                ConsoleHelper.Error(message);
-                return 2;
-            }
-
-            ConsoleHelper.Success(message);
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            ConsoleHelper.Error(ex.Message);
-            return 1;
-        }
     }
 
     private static bool TryParseNonInteractiveOptions(string[] args, out NonInteractiveOptions options)

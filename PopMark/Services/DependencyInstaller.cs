@@ -30,7 +30,7 @@ public sealed class DependencyInstaller
 
         var missingNames = string.Join(", ", missing.Select(dependency => dependency.DisplayName));
         if (!promptToInstall)
-            return $"Missing playback dependencies: {missingNames}. Run deps to install them locally.";
+            return $"Missing playback dependencies: {missingNames}. Start PopMark interactively to install them locally.";
 
         if (confirmInstall && !AnsiConsole.Confirm($"[yellow]Install missing playback tool(s) locally: {Markup.Escape(missingNames)}?[/]"))
             return $"Missing playback dependencies: {missingNames}.";

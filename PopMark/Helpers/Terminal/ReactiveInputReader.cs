@@ -18,7 +18,8 @@ internal static class ReactiveInputReader
         Func<string>? noticeProvider = null,
         Func<bool>? miniModeProvider = null,
         Func<bool>? helpModeProvider = null,
-        Func<int>? queueScrollOffsetProvider = null)
+        Func<int>? queueScrollOffsetProvider = null,
+        Func<bool>? controlsModeProvider = null)
     {
         if (snapshotProvider is null || noticeProvider is null)
         {
@@ -50,6 +51,7 @@ internal static class ReactiveInputReader
                 noticeProvider(),
                 buffer.ToString(),
                 helpModeProvider?.Invoke() == true,
+                controlsModeProvider?.Invoke() == true,
                 miniModeProvider?.Invoke() == true,
                 animationFrame,
                 queueScrollOffsetProvider?.Invoke() ?? 0);
@@ -60,6 +62,7 @@ internal static class ReactiveInputReader
                 noticeProvider,
                 miniModeProvider,
                 helpModeProvider,
+                controlsModeProvider,
                 buffer.ToString(),
                 includeElapsed: !IsInputActive()) ?? string.Empty;
         }
@@ -89,6 +92,7 @@ internal static class ReactiveInputReader
                         noticeProvider,
                         miniModeProvider,
                         helpModeProvider,
+                        controlsModeProvider,
                         buffer.ToString(),
                         includeElapsed: !inputActive) ?? string.Empty;
                     if (isAnimating || !string.Equals(screenSignature, lastScreenSignature, StringComparison.Ordinal))
@@ -401,6 +405,7 @@ internal static class ReactiveInputReader
         Func<string>? noticeProvider,
         Func<bool>? miniModeProvider,
         Func<bool>? helpModeProvider,
+        Func<bool>? controlsModeProvider,
         string input,
         bool includeElapsed)
     {
@@ -412,6 +417,8 @@ internal static class ReactiveInputReader
             .Append(miniModeProvider?.Invoke() == true ? "mini" : "full")
             .Append('|')
             .Append(helpModeProvider?.Invoke() == true ? "help" : "normal")
+            .Append('|')
+            .Append(controlsModeProvider?.Invoke() == true ? "controls" : "normal")
             .Append('|')
             .Append(snapshot.Status)
             .Append('|')

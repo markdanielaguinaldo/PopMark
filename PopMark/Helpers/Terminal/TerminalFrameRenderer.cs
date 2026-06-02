@@ -10,7 +10,7 @@ internal static class TerminalFrameRenderer
     private static int _lastRenderedHeight;
     private static ProgressHitbox? _lastProgressHitbox;
 
-    public static void DrawCommandCenter(PlayerSnapshot snapshot, string notice, bool showHelp = false, int queueScrollOffset = 0)
+    public static void DrawCommandCenter(PlayerSnapshot snapshot, string notice, bool showHelp = false, int queueScrollOffset = 0, bool showControls = false)
     {
         var (width, height) = TerminalHost.GetWindowSize();
         Render(new RenderContext(
@@ -20,6 +20,7 @@ internal static class TerminalFrameRenderer
             notice,
             Input: string.Empty,
             ShowHelp: showHelp,
+            ShowControls: showControls,
             MiniMode: false,
             AnimationFrame: 0,
             QueueScrollOffset: queueScrollOffset),
@@ -36,6 +37,7 @@ internal static class TerminalFrameRenderer
             notice,
             Input: string.Empty,
             ShowHelp: false,
+            ShowControls: false,
             MiniMode: true,
             AnimationFrame: 0,
             QueueScrollOffset: 0),
@@ -138,7 +140,7 @@ internal static class TerminalFrameRenderer
             return [prompt];
         }
 
-        var footer = FooterComponent(width, context.ShowHelp);
+        var footer = FooterComponent(width, context.ShowHelp, context.ShowControls);
         var playbackHeight = available >= 9 ? 5 : available >= 8 ? 4 : available >= 5 ? 3 : 0;
         var footerHeight = Math.Min(footer.Count, Math.Max(0, available - 1 - playbackHeight));
         var mainBudget = Math.Max(0, available - 1 - playbackHeight - footerHeight);
@@ -319,14 +321,33 @@ internal static class TerminalFrameRenderer
         return Box("Playback", rows, width, height, TerminalStyles.AnsiChrome);
     }
 
-    private static IReadOnlyList<string> FooterComponent(int width, bool showHelp)
+    private static IReadOnlyList<string> FooterComponent(int width, bool showHelp, bool showControls)
     {
-        if (!showHelp)
+        if (!showHelp && !showControls)
         {
             return
             [
-                TerminalText.PadAnsiAware($"{TerminalStyles.AnsiMuted}SPACE{TerminalStyles.Reset} play/pause {TerminalStyles.AnsiChrome}|{TerminalStyles.Reset} {TerminalStyles.AnsiMuted}LEFT/RIGHT{TerminalStyles.Reset} +/-10s {TerminalStyles.AnsiChrome}|{TerminalStyles.Reset} {TerminalStyles.AnsiMuted}click bar{TerminalStyles.Reset} seek {TerminalStyles.AnsiChrome}|{TerminalStyles.Reset} {TerminalStyles.AnsiMuted}UP/DOWN/WHEEL{TerminalStyles.Reset} playlist {TerminalStyles.AnsiChrome}|{TerminalStyles.Reset} {TerminalStyles.AnsiMuted}[ / ]{TerminalStyles.Reset} prev/next", width)
+                TerminalText.PadAnsiAware($"{TerminalStyles.AnsiMuted}help{TerminalStyles.Reset} commands {TerminalStyles.AnsiChrome}|{TerminalStyles.Reset} {TerminalStyles.AnsiMuted}controls{TerminalStyles.Reset} shortcuts {TerminalStyles.AnsiChrome}|{TerminalStyles.Reset} {TerminalStyles.AnsiMuted}SPACE{TerminalStyles.Reset} play/pause {TerminalStyles.AnsiChrome}|{TerminalStyles.Reset} {TerminalStyles.AnsiMuted}[ / ]{TerminalStyles.Reset} prev/next", width)
             ];
+        }
+
+        if (showControls)
+        {
+            return Box(
+                "Controls",
+                [
+                    $"{TerminalStyles.AnsiAccent}Space{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}toggle play or pause when the command field is empty{TerminalStyles.Reset}",
+                    $"{TerminalStyles.AnsiAccent}Left / Right arrows{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}seek backward or forward by 10 seconds{TerminalStyles.Reset}",
+                    $"{TerminalStyles.AnsiAccent}Up / Down arrows{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}scroll playlist by one row{TerminalStyles.Reset}",
+                    $"{TerminalStyles.AnsiAccent}PageUp / PageDown{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}scroll playlist faster{TerminalStyles.Reset}",
+                    $"{TerminalStyles.AnsiAccent}Home / End{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}jump to top or bottom of playlist{TerminalStyles.Reset}",
+                    $"{TerminalStyles.AnsiAccent}[ / ]{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}previous or next track; repeat quickly to jump multiple tracks{TerminalStyles.Reset}",
+                    $"{TerminalStyles.AnsiAccent}Mouse wheel{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}scroll playlist when supported{TerminalStyles.Reset}",
+                    $"{TerminalStyles.AnsiAccent}Click progress bar{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}jump to that timestamp when supported{TerminalStyles.Reset}"
+                ],
+                width,
+                10,
+                TerminalStyles.AnsiChrome);
         }
 
         return Box(
@@ -334,15 +355,12 @@ internal static class TerminalFrameRenderer
             [
                 $"{TerminalStyles.AnsiAccent}add <url>{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}load a YouTube video or playlist{TerminalStyles.Reset}",
                 $"{TerminalStyles.AnsiAccent}play/pause{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}toggle playback{TerminalStyles.Reset}   {TerminalStyles.AnsiAccent}next [count] / prev [count]{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}skip or return tracks{TerminalStyles.Reset}",
-                $"{TerminalStyles.AnsiAccent}LEFT/RIGHT arrows{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}seek backward or forward by 10s{TerminalStyles.Reset}",
-                $"{TerminalStyles.AnsiAccent}click progress bar{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}jump to that timestamp when mouse is supported{TerminalStyles.Reset}",
-                $"{TerminalStyles.AnsiAccent}Up/Down/Wheel/PageUp/PageDown/Home/End{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}scroll playlist{TerminalStyles.Reset}",
-                $"{TerminalStyles.AnsiAccent}[ / ]{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}previous or next track shortcut; repeat to jump multiple tracks{TerminalStyles.Reset}",
                 $"{TerminalStyles.AnsiAccent}clear playlist{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}stop playback and empty the queue{TerminalStyles.Reset}",
-                $"{TerminalStyles.AnsiAccent}cls{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}redraw{TerminalStyles.Reset}   {TerminalStyles.AnsiAccent}q{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}quit{TerminalStyles.Reset}"
+                $"{TerminalStyles.AnsiAccent}controls{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}show keyboard and mouse shortcuts{TerminalStyles.Reset}",
+                $"{TerminalStyles.AnsiAccent}q/quit/exit{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}stop playback and exit{TerminalStyles.Reset}"
             ],
             width,
-            10,
+            7,
             TerminalStyles.AnsiChrome);
     }
 

@@ -198,9 +198,10 @@ internal static class TerminalFrameRenderer
         var title = track?.Title ?? "Nothing loaded";
         var source = track?.DisplaySource ?? "add <url>";
         var duration = FormatDuration(track?.Duration);
+        var titleLine = NowPlayingTitleLine(title, NowPlayingMascot(snapshot.Status, context.Notice), Math.Max(8, width - 4));
         var rows = new List<string>
         {
-            $"{TerminalStyles.Bold}{TerminalStyles.AnsiWhite}{TerminalText.TrimForWidget(title, Math.Max(8, width - 8))}{TerminalStyles.Reset}",
+            titleLine,
             $"{TerminalStyles.AnsiMuted}{TerminalText.TrimForWidget(source, Math.Max(8, width - 18))}{TerminalStyles.Reset}",
             $"{StatusPill(snapshot.Status)} {TerminalStyles.AnsiMuted}{TerminalText.TrimForWidget(context.Notice, Math.Max(8, width - 18))}{TerminalStyles.Reset}",
             $"{TerminalStyles.AnsiMuted}Elapsed{TerminalStyles.Reset} {TerminalStyles.AnsiWhite}{FormatDuration(snapshot.Elapsed)}{TerminalStyles.Reset} {TerminalStyles.AnsiChrome}|{TerminalStyles.Reset} {TerminalStyles.AnsiMuted}Duration{TerminalStyles.Reset} {TerminalStyles.AnsiWhite}{duration}{TerminalStyles.Reset}"
@@ -380,6 +381,36 @@ internal static class TerminalFrameRenderer
 
         return $"{style}{label}{TerminalStyles.Reset}";
     }
+
+    private static string NowPlayingTitleLine(string title, string mascot, int width)
+    {
+        var mascotWidth = TerminalText.VisibleLength(mascot);
+        var titleWidth = Math.Max(1, width - mascotWidth - 1);
+        var trimmedTitle = TerminalText.TrimForWidget(title, titleWidth);
+        var gap = Math.Max(1, width - TerminalText.VisibleLength(trimmedTitle) - mascotWidth);
+        return $"{TerminalStyles.Bold}{TerminalStyles.AnsiWhite}{trimmedTitle}{TerminalStyles.Reset}{new string(' ', gap)}{TerminalStyles.AnsiAccent}{mascot}{TerminalStyles.Reset}";
+    }
+
+    private static string NowPlayingMascot(PlaybackStatus status, string notice)
+    {
+        if (LooksLikeError(notice))
+            return "[x_x]";
+
+        return status switch
+        {
+            PlaybackStatus.Playing => "[^_^]",
+            PlaybackStatus.Paused => "[-_-]",
+            PlaybackStatus.Loading => "[•_•]",
+            _ => "[-_-]"
+        };
+    }
+
+    private static bool LooksLikeError(string notice) =>
+        notice.Contains("failed", StringComparison.OrdinalIgnoreCase) ||
+        notice.Contains("error", StringComparison.OrdinalIgnoreCase) ||
+        notice.Contains("invalid", StringComparison.OrdinalIgnoreCase) ||
+        notice.Contains("not found", StringComparison.OrdinalIgnoreCase) ||
+        notice.Contains("unexpected", StringComparison.OrdinalIgnoreCase);
 
     private static string ProgressBar(double ratio, int width)
     {

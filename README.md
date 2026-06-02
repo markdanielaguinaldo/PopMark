@@ -4,7 +4,7 @@ A small terminal music queue for YouTube videos and playlists.
 
 PopMark expands links with `yt-dlp`, streams audio through `mpv`, and keeps your queue available between launches.
 
-![PopMark terminal showcase](PopMark/Files/Popmark.gif)
+![PopMark cover art](PopMark/Files/Popmark%20Cover.png)
 
 ## Features
 

@@ -13,7 +13,6 @@ PopMark expands links with `yt-dlp`, streams audio through `mpv`, and keeps your
 - Add YouTube videos or playlists from the terminal
 - Stream through `mpv` without downloading music files
 - Restore the previous queue on launch
-- Toggle full and mini player views
 - Arrow-key seeking, skip, previous track, pause, resume, and clear the playlist
 - Install local playback tools without admin access
 
@@ -67,6 +66,5 @@ dotnet run --project .\PopMark\PopMark.csproj -- play-test "https://www.youtube.
 | `Up Arrow` / `Down Arrow` / mouse wheel | Scroll the playlist panel by one row |
 | `PageUp` / `PageDown` / `Home` / `End` | Scroll the playlist panel faster |
 | `clear playlist` | Stop playback and empty the queue |
-| `mini` | Toggle compact player mode |
 | `cls` / `clear` | Redraw the terminal UI |
 | `quit` | Stop playback and exit |

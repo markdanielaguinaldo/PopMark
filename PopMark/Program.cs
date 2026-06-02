@@ -18,10 +18,16 @@ internal static class Program
         var ytDlp = new YtDlpService();
         var mpv = new MpvPlayer();
         var player = new PlaybackQueue(ytDlp, mpv);
+        var shutdownGuard = new PlaybackShutdownGuard(
+            player,
+            () =>
+            {
+                ConsoleHelper.ResetCursorStyle();
+                ConsoleHelper.LeaveInteractiveScreen();
+            });
         var dependencies = new DependencyInstaller();
         var history = new List<string>();
         var notice = "Ready. Add a YouTube video or playlist URL to start.";
-        var miniMode = false;
         var showHelp = false;
         var queueScrollOffset = 0;
         player.LastMessage = notice;
@@ -75,10 +81,7 @@ internal static class Program
 
             while (keepRunning)
             {
-                if (miniMode)
-                    ConsoleHelper.DrawMiniPlayer(player.CreateSnapshot(), player.LastMessage);
-                else
-                    ConsoleHelper.DrawCommandCenter(player.CreateSnapshot(), player.LastMessage, showHelp, queueScrollOffset);
+                ConsoleHelper.DrawCommandCenter(player.CreateSnapshot(), player.LastMessage, showHelp, queueScrollOffset);
                 ConsoleHelper.UseBarCursor();
 
                 var input = ConsoleHelper.ReadReactiveInput(
@@ -87,7 +90,7 @@ internal static class Program
                     history,
                     () => player.CreateSnapshot(),
                     () => player.LastMessage,
-                    () => miniMode,
+                    null,
                     () => showHelp,
                     () => queueScrollOffset);
                 ConsoleHelper.ShowCursor();
@@ -132,21 +135,12 @@ internal static class Program
                     showHelp = parsedArgs[0].Equals("help", StringComparison.OrdinalIgnoreCase) ||
                                parsedArgs[0].Equals("h", StringComparison.OrdinalIgnoreCase) ||
                                parsedArgs[0].Equals("?", StringComparison.OrdinalIgnoreCase);
-                    if (showHelp && miniMode)
-                    {
-                        miniMode = false;
-                    }
 
                     keepRunning = !await ProcessCommandAsync(
                         player,
                         dependencies,
                         parsedArgs,
-                        input,
-                        () =>
-                        {
-                            miniMode = !miniMode;
-                            player.LastMessage = miniMode ? "Compact view enabled." : "Full player view enabled.";
-                        });
+                        input);
                     notice = player.LastMessage;
                     (lastWidth, lastHeight) = ConsoleHelper.GetWindowSize();
                 }
@@ -166,6 +160,7 @@ internal static class Program
         }
         finally
         {
+            shutdownGuard.Cleanup();
             ConsoleHelper.ResetCursorStyle();
             ConsoleHelper.LeaveInteractiveScreen();
         }
@@ -175,8 +170,7 @@ internal static class Program
         PlaybackQueue player,
         DependencyInstaller dependencies,
         string[] args,
-        string rawInput,
-        Action toggleMiniMode)
+        string rawInput)
     {
         var command = args[0].ToLowerInvariant();
 
@@ -284,11 +278,6 @@ internal static class Program
                 }
 
                 player.LastMessage = "Screen refreshed.";
-                return false;
-
-            case "mini":
-            case "m":
-                toggleMiniMode();
                 return false;
 
             case "quit":

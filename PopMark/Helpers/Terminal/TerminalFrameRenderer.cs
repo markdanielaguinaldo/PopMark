@@ -339,7 +339,7 @@ internal static class TerminalFrameRenderer
                 $"{TerminalStyles.AnsiAccent}Up/Down/Wheel/PageUp/PageDown/Home/End{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}scroll playlist{TerminalStyles.Reset}",
                 $"{TerminalStyles.AnsiAccent}[ / ]{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}previous or next track shortcut; repeat to jump multiple tracks{TerminalStyles.Reset}",
                 $"{TerminalStyles.AnsiAccent}clear playlist{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}stop playback and empty the queue{TerminalStyles.Reset}",
-                $"{TerminalStyles.AnsiAccent}mini{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}compact view{TerminalStyles.Reset}   {TerminalStyles.AnsiAccent}cls{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}redraw{TerminalStyles.Reset}   {TerminalStyles.AnsiAccent}q{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}quit{TerminalStyles.Reset}"
+                $"{TerminalStyles.AnsiAccent}cls{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}redraw{TerminalStyles.Reset}   {TerminalStyles.AnsiAccent}q{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}quit{TerminalStyles.Reset}"
             ],
             width,
             10,

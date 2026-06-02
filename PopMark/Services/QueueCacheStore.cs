@@ -29,7 +29,11 @@ public static class QueueCacheStore
             if (cache is null)
                 return new PlayerSnapshot(PlaybackStatus.Stopped, null, [], []);
 
-            return new PlayerSnapshot(PlaybackStatus.Stopped, cache.Current, cache.Pending, []);
+            return new PlayerSnapshot(
+                PlaybackStatus.Stopped,
+                cache.Current,
+                cache.Pending ?? [],
+                cache.Previous ?? []);
         }
         catch
         {
@@ -42,7 +46,10 @@ public static class QueueCacheStore
         try
         {
             Directory.CreateDirectory(StateDirectory);
-            var cache = new QueueCache(snapshot.Current, snapshot.Pending.ToList());
+            var cache = new QueueCache(
+                snapshot.Current,
+                snapshot.Pending.ToList(),
+                snapshot.Previous.ToList());
             File.WriteAllText(CacheFilePath, JsonSerializer.Serialize(cache, JsonOptions));
         }
         catch
@@ -62,5 +69,5 @@ public static class QueueCacheStore
         }
     }
 
-    private sealed record QueueCache(Track? Current, List<Track> Pending);
+    private sealed record QueueCache(Track? Current, List<Track>? Pending, List<Track>? Previous);
 }

@@ -63,6 +63,9 @@ public sealed class PlaybackQueue
             _current = snapshot.Current;
             _status = PlaybackStatus.Stopped;
 
+            foreach (var track in snapshot.Previous)
+                _previous.Push(track);
+
             if (_current is not null)
                 _pending.Enqueue(_current);
 
@@ -73,9 +76,10 @@ public sealed class PlaybackQueue
             ResetPositionLocked(startRunning: false);
         }
 
-        LastMessage = snapshot.Current is null && snapshot.Pending.Count == 0
+        var restoredCount = snapshot.Previous.Count + snapshot.Pending.Count + (snapshot.Current is null ? 0 : 1);
+        LastMessage = restoredCount == 0
             ? "Ready."
-            : $"Restored {snapshot.Pending.Count + (snapshot.Current is null ? 0 : 1)} cached track(s).";
+            : $"Restored {restoredCount} cached track(s).";
         NotifySnapshotChanged();
     }
 

@@ -317,9 +317,38 @@ internal static class ReactiveInputReader
             _ => string.Empty
         };
 
+        if (string.IsNullOrWhiteSpace(command) &&
+            TryResolveCsiFinalShortcut(sequence, out command))
+        {
+            return true;
+        }
+
         return !string.IsNullOrWhiteSpace(command) ||
                sequence.StartsWith("\u001b[", StringComparison.Ordinal) ||
                sequence.StartsWith("\u001bO", StringComparison.Ordinal);
+    }
+
+    private static bool TryResolveCsiFinalShortcut(string sequence, out string command)
+    {
+        command = string.Empty;
+        if (!sequence.StartsWith("\u001b[", StringComparison.Ordinal) ||
+            sequence.Length < 3)
+        {
+            return false;
+        }
+
+        command = sequence[^1] switch
+        {
+            'A' => "__queue-up",
+            'B' => "__queue-down",
+            'C' => "__seek-forward",
+            'D' => "__seek-back",
+            'H' => "__queue-home",
+            'F' => "__queue-end",
+            _ => string.Empty
+        };
+
+        return !string.IsNullOrWhiteSpace(command);
     }
 
     private static string ResolveMouseButtonCommand(int button, int x, int y)

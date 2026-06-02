@@ -126,6 +126,14 @@ internal static class Program
                         continue;
                     }
 
+                    if (IsSeekCommand(parsedArgs[0]))
+                    {
+                        await player.SeekRelativeAsync(ResolveArrowSeekSeconds(parsedArgs[0]));
+                        notice = player.LastMessage;
+                        (lastWidth, lastHeight) = ConsoleHelper.GetWindowSize();
+                        continue;
+                    }
+
                     if (IsInternalCommand(parsedArgs[0]))
                     {
                         (lastWidth, lastHeight) = ConsoleHelper.GetWindowSize();
@@ -501,6 +509,10 @@ internal static class Program
         var direction = command.Equals("__seek-forward", StringComparison.OrdinalIgnoreCase) ? 1 : -1;
         return direction * ArrowSeekBaseSeconds;
     }
+
+    private static bool IsSeekCommand(string command) =>
+        command.Equals("__seek-forward", StringComparison.OrdinalIgnoreCase) ||
+        command.Equals("__seek-back", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsInternalCommand(string input) =>
         input.StartsWith("__", StringComparison.Ordinal);

@@ -55,8 +55,6 @@ dotnet run --project .\PopMark\PopMark.csproj -- play-test "https://www.youtube.
 
 ## Stack
 
-
-## Commands
   - Language: C#
   - Runtime / Framework: .NET 9
   - Project type: Console app / terminal UI
@@ -64,6 +62,9 @@ dotnet run --project .\PopMark\PopMark.csproj -- play-test "https://www.youtube.
   - Archive extraction dependency: SharpCompress
   - Playback engine: mpv
   - YouTube metadata / playlist expansion: yt-dlp
+
+
+## Commands
 
 | Command | Action |
 | --- | --- |

@@ -53,7 +53,17 @@ Run a short non-interactive playback test:
 dotnet run --project .\PopMark\PopMark.csproj -- play-test "https://www.youtube.com/watch?v=..." --seconds 15
 ```
 
+## Stack
+
+
 ## Commands
+  - Language: C#
+  - Runtime / Framework: .NET 9
+  - Project type: Console app / terminal UI
+  - Terminal UI library: Spectre.Console
+  - Archive extraction dependency: SharpCompress
+  - Playback engine: mpv
+  - YouTube metadata / playlist expansion: yt-dlp
 
 | Command | Action |
 | --- | --- |

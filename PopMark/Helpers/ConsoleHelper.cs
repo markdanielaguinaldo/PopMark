@@ -12,12 +12,12 @@ public static class ConsoleHelper
     private const uint EnableVirtualTerminalProcessing = 0x0004;
     private const int MiniWidgetWidth = 46;
     private const int MiniWidgetHeight = 9;
-    private const string Accent = "deepskyblue1";
-    private const string Secondary = "lightskyblue1";
-    private const string SuccessColor = "cyan1";
+    private const string Accent = "#00d4ff";
+    private const string Secondary = "#8b5cf6";
+    private const string SuccessColor = "#00d4ff";
     private const string Muted = "grey70";
     private const string Chrome = "grey35";
-    private const string PanelBorder = "steelblue1";
+    private const string PanelBorder = "#00d4ff";
     private static readonly string[] VisualizerBars = ["▁", "▂", "▃", "▄", "▅", "▆", "▇"];
 
     [DllImport("kernel32.dll", SetLastError = true)]
@@ -92,14 +92,13 @@ public static class ConsoleHelper
     {
         TryClear();
 
-        AnsiConsole.Write(BuildTopBar(snapshot));
-        AnsiConsole.WriteLine();
-        AnsiConsole.Write(BuildCommandCenterBody(snapshot, notice));
-        AnsiConsole.WriteLine();
+        AnsiConsole.Write(BuildHeaderPanel(snapshot));
+        AnsiConsole.Write(BuildMainGrid(snapshot, notice));
+        AnsiConsole.Write(BuildPlaybackBar(snapshot));
         if (showHelp)
             AnsiConsole.Write(BuildHelpTable());
         else
-            AnsiConsole.Write(BuildPromptSuggestions());
+            AnsiConsole.Write(BuildFooterCommandBar());
     }
 
     public static void DrawMiniPlayer(PlayerSnapshot snapshot, string notice)
@@ -109,6 +108,8 @@ public static class ConsoleHelper
         var track = snapshot.Current?.Title
             ?? snapshot.Pending.FirstOrDefault()?.Title
             ?? "Queue is empty";
+        var duration = FormatDuration(snapshot.Current?.Duration ?? snapshot.Pending.FirstOrDefault()?.Duration);
+        var progress = ProgressRatio(snapshot);
         var (_, windowHeight) = GetWindowSize();
         var topPadding = Math.Max(0, windowHeight - MiniWidgetHeight - 2);
         var textWidth = MiniWidgetWidth - 10;
@@ -116,11 +117,12 @@ public static class ConsoleHelper
             Console.Write(new string('\n', topPadding));
 
         var body = new Rows(
-            Align.Center(new Markup($"[bold {Accent}]PopMark[/] [dim {Secondary}]// compact[/]")),
-            Align.Center(new Markup(MiniStatusMarkup(snapshot.Status))),
-            Align.Center(new Markup($"[white]{Markup.Escape(TrimForWidget(track, textWidth))}[/]")),
-            Align.Center(new Markup($"[{Muted}]{Markup.Escape(TrimForWidget(notice, textWidth))}[/]")),
-            Align.Center(new Markup($"[{Muted}]Type [{Accent}]help[/] for commands[/]")));
+            Align.Center(new Markup($"[bold {Accent}]PopMark[/]")),
+            Align.Center(new Markup($"{MiniStatusMarkup(snapshot.Status)} [white]{Markup.Escape(TrimForWidget(track, textWidth))}[/]")),
+            Align.Center(new Markup($"[{Accent}]{BuildProgressBar(progress, 20)}[/]")),
+            Align.Center(new Markup($"[{Muted}]{FormatDuration(snapshot.Elapsed)} / {duration}[/]")),
+            Align.Center(new Markup(BuildVisualizer(snapshot.Status, MiniVisualizerBarCount()))),
+            Align.Center(new Markup($"[{Muted}]{Markup.Escape(TrimForWidget(notice, textWidth))}[/]")));
 
         var panel = new Panel(body)
             .Border(BoxBorder.Rounded)
@@ -175,7 +177,9 @@ public static class ConsoleHelper
             {
                 lastWidth = width;
                 lastHeight = height;
-                return "cls";
+                RefreshScreen();
+                lastScreenSignature = BuildScreenSignature(snapshotProvider, noticeProvider, miniModeProvider, helpModeProvider);
+                continue;
             }
 
             if (!Console.KeyAvailable)
@@ -199,6 +203,23 @@ public static class ConsoleHelper
 
             if (key.Key == ConsoleKey.L && key.Modifiers.HasFlag(ConsoleModifiers.Control))
                 return "cls";
+
+            if (buffer.Length == 0 && !browsingHistory)
+            {
+                switch (key.Key)
+                {
+                    case ConsoleKey.Spacebar:
+                        return "play";
+                    case ConsoleKey.N:
+                        return "next";
+                    case ConsoleKey.M:
+                        return "mini";
+                    case ConsoleKey.Q:
+                        return "q";
+                    case ConsoleKey.Oem2 when key.KeyChar == '?':
+                        return "help";
+                }
+            }
 
             if (key.Key == ConsoleKey.Enter)
             {
@@ -356,7 +377,7 @@ public static class ConsoleHelper
     public static void Error(string message) =>
         AnsiConsole.MarkupLine($"[red][[ERR]][/] {Markup.Escape(message)}");
 
-    private static IRenderable BuildTopBar(PlayerSnapshot snapshot)
+    private static IRenderable BuildHeaderPanel(PlayerSnapshot snapshot)
     {
         var grid = new Grid()
             .Expand()
@@ -364,55 +385,51 @@ public static class ConsoleHelper
             .AddColumn(new GridColumn().RightAligned());
 
         grid.AddRow(
-            $"[bold {Accent}]PopMark[/] [{Muted}]terminal player[/]",
-            $"{StatusMarkup(snapshot.Status)} [{Chrome}]|[/] [{Muted}]queue[/] [white]{snapshot.Pending.Count}[/]");
+            $"[bold {Accent}]PopMark[/] [{Muted}]terminal music console[/]",
+            $"[{Muted}]Queue:[/] [white]{QueueCount(snapshot)}[/]");
+        grid.AddRow(
+            $"[{Muted}]Status:[/] {StatusMarkup(snapshot.Status)}",
+            $"[{Muted}]Volume:[/] [white]mpv[/]  [{Muted}]Repeat:[/] [white]Off[/]");
 
         return new Panel(grid)
-            .Border(BoxBorder.None)
-            .Padding(0, 0, 0, 0);
+            .Border(BoxBorder.Square)
+            .BorderStyle(Style.Parse(PanelBorder))
+            .Padding(1, 0);
     }
 
-    private static IRenderable BuildCommandCenterBody(PlayerSnapshot snapshot, string notice)
+    private static IRenderable BuildMainGrid(PlayerSnapshot snapshot, string notice)
     {
-        var width = GetWindowSize().Width;
-        if (width >= 108)
-        {
-            return new Columns(
-                BuildNowPlayingCard(snapshot, notice),
-                BuildQueuePanel(snapshot))
-                .Expand();
-        }
+        if (snapshot.Current is null && snapshot.Pending.Count == 0)
+            return BuildEmptyStatePanel();
 
         return new Rows(
-            BuildNowPlayingCard(snapshot, notice),
+            BuildNowPlayingPanel(snapshot, notice),
             BuildQueuePanel(snapshot));
     }
 
-    private static IRenderable BuildNowPlayingCard(PlayerSnapshot snapshot, string notice)
+    private static IRenderable BuildNowPlayingPanel(PlayerSnapshot snapshot, string notice)
     {
         var title = snapshot.Current?.Title
             ?? snapshot.Pending.FirstOrDefault()?.Title
             ?? "Nothing loaded";
 
-        var source = snapshot.Current?.DisplaySource
+        var playlist = snapshot.Current?.DisplaySource
             ?? snapshot.Pending.FirstOrDefault()?.DisplaySource
             ?? "add <url>";
-
-        var titleMarkup = snapshot.Current is null && snapshot.Pending.Count == 0
-            ? $"[{Muted}]Drop in a link to start[/]"
-            : $"[bold white]{Markup.Escape(title)}[/]";
+        var duration = FormatDuration(snapshot.Current?.Duration ?? snapshot.Pending.FirstOrDefault()?.Duration);
 
         var rows = new Rows(
-            new Markup($"[{Muted}]NOW PLAYING[/]"),
-            new Markup(titleMarkup),
-            new Markup($"[{Muted}]{Markup.Escape(source)}[/]"),
+            new Markup($"[bold {Accent}]{Markup.Escape(TrimForWidget(title, 58))}[/]"),
+            new Markup($"[white]{Markup.Escape(TrimForWidget(ResolveSubtitle(title), 58))}[/]"),
+            new Markup($"[{Muted}]Playlist:[/] [white]{Markup.Escape(TrimForWidget(playlist, 46))}[/]"),
+            new Markup($"[{Muted}]Source:[/] [white]{ResolveSourceName(snapshot.Current)}[/]  [{Muted}]Duration:[/] [white]{duration}[/]"),
             new Text(""),
-            new Markup(BuildVisualizer(snapshot.Status)),
-            new Markup($"[{Muted}]{Markup.Escape(TrimForWidget(notice, 92))}[/]"));
+            new Markup($"{ActivityMarkup(snapshot.Status)} [{Chrome}]//[/] [{Muted}]{Markup.Escape(TrimForWidget(notice, 58))}[/]"));
 
         return new Panel(rows)
             .Border(BoxBorder.Rounded)
             .BorderStyle(Style.Parse(PanelBorder))
+            .Header($"[bold {Secondary}] NOW PLAYING [/]", Justify.Center)
             .Padding(2, 1)
             .Expand();
     }
@@ -421,25 +438,30 @@ public static class ConsoleHelper
     {
         var rows = new List<IRenderable>
         {
-            new Markup($"[{Muted}]QUEUE[/]")
+            new Markup($"[bold {Secondary}]UP NEXT[/]")
         };
 
+        if (snapshot.Current is not null)
+            rows.Add(new Markup($"[{Accent}]▶ {Markup.Escape(TrimForWidget(snapshot.Current.Title, 28))}[/]"));
+
         var index = 1;
-        foreach (var track in snapshot.Pending.Take(6))
+        foreach (var track in snapshot.Pending.Take(7))
         {
+            var color = index == 1 ? "white" : Muted;
             rows.Add(new Markup(
-                $"[{Accent}]{index,2}[/] [white]{Markup.Escape(TrimForWidget(track.Title, 46))}[/] [{Muted}]{Markup.Escape(TrimForWidget(track.DisplaySource, 20))}[/]"));
+                $"[{color}]  {Markup.Escape(TrimForWidget(track.Title, 30))}[/]"));
             index++;
         }
 
-        if (snapshot.Pending.Count == 0)
-            rows.Add(new Markup($"[{Muted}]Queue is empty. Paste a YouTube URL or type [{Accent}]add <url>[/].[/]"));
+        if (snapshot.Pending.Count == 0 && snapshot.Current is not null)
+            rows.Add(new Markup($"[{Muted}]  End of queue[/]"));
 
-        if (snapshot.Pending.Count > 6)
-            rows.Add(new Markup($"[{Muted}]+ {snapshot.Pending.Count - 6} more[/]"));
+        if (snapshot.Pending.Count > 7)
+            rows.Add(new Markup($"[{Muted}]+ {snapshot.Pending.Count - 7} more[/]"));
 
         return new Panel(new Rows(rows))
-            .Border(BoxBorder.None)
+            .Border(BoxBorder.Rounded)
+            .BorderStyle(Style.Parse(Chrome))
             .Padding(1, 1)
             .Expand();
     }
@@ -456,11 +478,53 @@ public static class ConsoleHelper
         table.AddRow("add <url>", "Add a YouTube video or playlist", "a");
         table.AddRow("play / pause", "Toggle playback", "r");
         table.AddRow("next", "Skip to the next queued track", "n");
+        table.AddRow("seek <seconds>", "Move relative to the current position", "ff / rewind");
         table.AddRow("cls", "Clear and redraw the command center", "clear / Ctrl+L");
         table.AddRow("mini", "Toggle compact player view", "m");
         table.AddRow("quit", "Stop playback and exit", "q");
 
         return table;
+    }
+
+    private static IRenderable BuildPlaybackBar(PlayerSnapshot snapshot)
+    {
+        var visualizerWidth = FullVisualizerBarCount();
+
+        var rows = new Rows(
+            new Markup($"[{Accent}]{BuildFullProgressLine(snapshot)}[/]"),
+            new Markup($"[{SuccessColor}]{BuildVisualizerText(snapshot.Status, visualizerWidth)}[/]"));
+
+        return new Panel(rows)
+            .Border(BoxBorder.Square)
+            .BorderStyle(Style.Parse(PanelBorder))
+            .Padding(1, 0);
+    }
+
+    private static IRenderable BuildFooterCommandBar()
+    {
+        var commands = new Markup(
+            $"[{Muted}]add <url>[/] [{Chrome}]|[/] [{Accent}]SPACE[/] play/pause [{Chrome}]|[/] [{Muted}]N[/] next [{Chrome}]|[/] [{Accent}]seek 30[/] [{Chrome}]|[/] [{Muted}]M[/] mini [{Chrome}]|[/] [{Accent}]Q[/] quit");
+
+        return new Panel(commands)
+            .Border(BoxBorder.Square)
+            .BorderStyle(Style.Parse(Chrome))
+            .Padding(1, 0);
+    }
+
+    private static IRenderable BuildEmptyStatePanel()
+    {
+        var rows = new Rows(
+            Align.Center(new Markup($"[bold {Accent}]PopMark[/]")),
+            Align.Center(new Markup($"[{Muted}]Paste a YouTube playlist URL[/]")),
+            Align.Center(new Markup($"[{Muted}]or search for music[/]")),
+            new Text(""),
+            Align.Center(new Markup($"[{Accent}]add <url>[/]")));
+
+        return new Panel(rows)
+            .Border(BoxBorder.Square)
+            .BorderStyle(Style.Parse(PanelBorder))
+            .Padding(2, 2)
+            .Expand();
     }
 
     private static string StatusMarkup(PlaybackStatus status) =>
@@ -493,14 +557,29 @@ public static class ConsoleHelper
             _ => $"[{Chrome}]Idle[/]"
         };
 
-    private static string BuildVisualizer(PlaybackStatus status)
+    private static string BuildVisualizer(PlaybackStatus status, int? barCount = null)
     {
-        var width = Math.Clamp(GetWindowSize().Width / 3, 18, 42);
+        var width = barCount ?? Math.Clamp(GetWindowSize().Width / 3, 18, 42);
+        var visualizer = BuildVisualizerText(status, width);
+
+        var color = status switch
+        {
+            PlaybackStatus.Paused => Muted,
+            PlaybackStatus.Playing or PlaybackStatus.Loading => SuccessColor,
+            _ => Chrome
+        };
+
+        return $"[{color}]{visualizer}[/]";
+    }
+
+    private static string BuildVisualizerText(PlaybackStatus status, int barCount)
+    {
+        var width = Math.Max(1, barCount);
         if (status == PlaybackStatus.Paused)
-            return $"[{Muted}]{string.Join(' ', Enumerable.Repeat("▃", Math.Min(width, 18)))}[/]";
+            return string.Join(' ', Enumerable.Repeat("▃", Math.Min(width, 18)));
 
         if (status is not (PlaybackStatus.Playing or PlaybackStatus.Loading))
-            return $"[{Chrome}]{BuildIdleWave(Math.Min(width, 24))}[/]";
+            return BuildIdleWave(Math.Min(width, 24));
 
         var tick = Environment.TickCount64 / 95;
         var bars = Enumerable.Range(0, width)
@@ -510,7 +589,7 @@ public static class ConsoleHelper
                 return VisualizerBars[phase];
             });
 
-        return $"[{SuccessColor}]{string.Join(' ', bars)}[/]";
+        return string.Join(' ', bars);
     }
 
     private static string BuildIdleWave(int width)
@@ -521,6 +600,12 @@ public static class ConsoleHelper
 
         return string.Join(' ', output);
     }
+
+    private static int MiniVisualizerBarCount() =>
+        Math.Clamp((MiniWidgetWidth - 12) / 2, 8, 16);
+
+    private static int FullVisualizerBarCount() =>
+        Math.Clamp(GetWindowSize().Width / 4, 14, 34);
 
     private static IRenderable BuildPromptSuggestions()
     {
@@ -536,6 +621,76 @@ public static class ConsoleHelper
     {
         AnsiConsole.Markup($"[bold {Accent}]popmark[/][{Muted}] >[/] ");
         Console.Write(input);
+    }
+
+    private static int QueueCount(PlayerSnapshot snapshot) =>
+        snapshot.Pending.Count + (snapshot.Current is null ? 0 : 1);
+
+    private static string ResolveSubtitle(string title)
+    {
+        var separators = new[] { " performs ", " - ", " | " };
+        foreach (var separator in separators)
+        {
+            var index = title.IndexOf(separator, StringComparison.OrdinalIgnoreCase);
+            if (index > 0 && index + separator.Length < title.Length)
+                return TrimForWidget(title[(index + separator.Length)..].Trim(' ', '"'), 58);
+        }
+
+        return "Unknown artist";
+    }
+
+    private static string ResolveSourceName(Track? track)
+    {
+        if (track is null)
+            return "None";
+
+        return track.Url.Contains("youtu", StringComparison.OrdinalIgnoreCase)
+            ? "YouTube"
+            : "Local";
+    }
+
+    private static string FormatDuration(TimeSpan? duration)
+    {
+        if (duration is null)
+            return "--:--";
+
+        return duration.Value.TotalHours >= 1
+            ? duration.Value.ToString(@"h\:mm\:ss")
+            : duration.Value.ToString(@"m\:ss");
+    }
+
+    private static string BuildProgressBar(double progress, int width)
+    {
+        var clamped = Math.Clamp(progress, 0, 1);
+        var filled = (int)Math.Round(width * clamped);
+        var empty = Math.Max(0, width - filled);
+        return $"{new string('█', filled)}{new string('░', empty)}";
+    }
+
+    private static string BuildFullProgressLine(PlayerSnapshot snapshot)
+    {
+        var width = Math.Clamp(GetWindowSize().Width - 28, 18, 42);
+        return $"{BuildProgressBar(ProgressRatio(snapshot), width)} {FormatDuration(snapshot.Elapsed)} / {FormatDuration(snapshot.Current?.Duration)}";
+    }
+
+    private static string CenterText(string text, int width)
+    {
+        if (text.Length >= width)
+            return text;
+
+        var left = (width - text.Length) / 2;
+        return $"{new string(' ', left)}{text}";
+    }
+
+    private static double ProgressRatio(PlayerSnapshot snapshot)
+    {
+        if (snapshot.Current?.Duration is not { TotalSeconds: > 0 } duration ||
+            snapshot.Elapsed is not { } elapsed)
+        {
+            return 0;
+        }
+
+        return Math.Clamp(elapsed.TotalSeconds / duration.TotalSeconds, 0, 1);
     }
 
     private static string? BuildScreenSignature(
@@ -747,7 +902,7 @@ public static class ConsoleHelper
         {
             if (!Console.IsOutputRedirected)
             {
-                Console.Write("\u001b[H\u001b[J");
+                Console.Write("\u001b[H\u001b[2J\u001b[3J");
                 return;
             }
 
@@ -758,5 +913,4 @@ public static class ConsoleHelper
             AnsiConsole.Clear();
         }
     }
-
 }

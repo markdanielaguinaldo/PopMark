@@ -190,6 +190,18 @@ internal static class Program
                 await player.NextAsync();
                 return false;
 
+            case "seek":
+            case "ff":
+            case "rewind":
+                if (!TryResolveSeekSeconds(args, out var seekSeconds))
+                {
+                    player.LastMessage = "Usage: seek <seconds>, for example: seek 30 or seek -30.";
+                    return false;
+                }
+
+                await player.SeekRelativeAsync(seekSeconds);
+                return false;
+
             case "stop":
             case "s":
                 await player.StopAsync(clearQueue: true);
@@ -407,6 +419,14 @@ internal static class Program
 
         var firstSpace = rawInput.IndexOf(' ');
         return firstSpace >= 0 ? rawInput[(firstSpace + 1)..].Trim() : null;
+    }
+
+    private static bool TryResolveSeekSeconds(string[] args, out int seconds)
+    {
+        seconds = 0;
+        return args.Length >= 2 &&
+               int.TryParse(args[1], out seconds) &&
+               seconds != 0;
     }
 
     private static bool IsLikelyUrl(string value) =>

@@ -10,6 +10,8 @@ public sealed class PlaybackQueue
     private readonly object _syncRoot = new();
     private Track? _current;
     private PlaybackStatus _status = PlaybackStatus.Stopped;
+    private TimeSpan _positionOffset = TimeSpan.Zero;
+    private DateTimeOffset? _positionStartedAt;
 
     public event Action<PlayerSnapshot>? SnapshotChanged;
 
@@ -66,6 +68,7 @@ public sealed class PlaybackQueue
                 _pending.Enqueue(track);
 
             _current = null;
+            ResetPositionLocked(startRunning: false);
         }
 
         LastMessage = snapshot.Current is null && snapshot.Pending.Count == 0
@@ -83,8 +86,14 @@ public sealed class PlaybackQueue
         }
 
         await _mpv.PauseAsync(cancellationToken);
-        SetStatus(PlaybackStatus.Paused);
+        lock (_syncRoot)
+        {
+            _positionOffset = ResolveElapsedLocked();
+            _positionStartedAt = null;
+            _status = PlaybackStatus.Paused;
+        }
         LastMessage = "Playback paused.";
+        NotifySnapshotChanged();
     }
 
     public async Task ResumeAsync(CancellationToken cancellationToken = default)
@@ -96,8 +105,13 @@ public sealed class PlaybackQueue
         }
 
         await _mpv.ResumeAsync(cancellationToken);
-        SetStatus(PlaybackStatus.Playing);
+        lock (_syncRoot)
+        {
+            _positionStartedAt = DateTimeOffset.UtcNow;
+            _status = PlaybackStatus.Playing;
+        }
         LastMessage = "Playback resumed.";
+        NotifySnapshotChanged();
     }
 
     public async Task TogglePauseAsync(CancellationToken cancellationToken = default)
@@ -123,7 +137,18 @@ public sealed class PlaybackQueue
         await _mpv.TogglePauseAsync(cancellationToken);
         lock (_syncRoot)
         {
-            _status = _status == PlaybackStatus.Paused ? PlaybackStatus.Playing : PlaybackStatus.Paused;
+            if (_status == PlaybackStatus.Paused)
+            {
+                _status = PlaybackStatus.Playing;
+                _positionStartedAt = DateTimeOffset.UtcNow;
+            }
+            else
+            {
+                _positionOffset = ResolveElapsedLocked();
+                _positionStartedAt = null;
+                _status = PlaybackStatus.Paused;
+            }
+
             LastMessage = _status == PlaybackStatus.Paused ? "Playback paused." : "Playback resumed.";
         }
         NotifySnapshotChanged();
@@ -139,11 +164,13 @@ public sealed class PlaybackQueue
             {
                 _current = null;
                 _status = PlaybackStatus.Stopped;
+                ResetPositionLocked(startRunning: false);
             }
             else
             {
                 _current = next;
                 _status = PlaybackStatus.Playing;
+                ResetPositionLocked(startRunning: true);
             }
         }
 
@@ -159,12 +186,35 @@ public sealed class PlaybackQueue
         NotifySnapshotChanged();
     }
 
+    public async Task SeekRelativeAsync(int seconds, CancellationToken cancellationToken = default)
+    {
+        if (!HasCurrentTrack())
+        {
+            LastMessage = "Nothing is playing.";
+            return;
+        }
+
+        await _mpv.SeekRelativeAsync(seconds, cancellationToken);
+        lock (_syncRoot)
+        {
+            var elapsed = ResolveElapsedLocked().Add(TimeSpan.FromSeconds(seconds));
+            _positionOffset = ClampElapsedLocked(elapsed);
+            _positionStartedAt = _status == PlaybackStatus.Playing ? DateTimeOffset.UtcNow : null;
+        }
+
+        LastMessage = seconds >= 0
+            ? $"Skipped forward {seconds} second(s)."
+            : $"Rewound {Math.Abs(seconds)} second(s).";
+        NotifySnapshotChanged();
+    }
+
     public async Task StopAsync(bool clearQueue, CancellationToken cancellationToken = default)
     {
         lock (_syncRoot)
         {
             _current = null;
             _status = PlaybackStatus.Stopped;
+            ResetPositionLocked(startRunning: false);
             if (clearQueue)
                 _pending.Clear();
         }
@@ -178,6 +228,8 @@ public sealed class PlaybackQueue
     {
         lock (_syncRoot)
         {
+            _positionOffset = ResolveElapsedLocked();
+            _positionStartedAt = null;
             _status = PlaybackStatus.Stopped;
         }
 
@@ -200,6 +252,8 @@ public sealed class PlaybackQueue
         lock (_syncRoot)
         {
             _pending.Clear();
+            _positionOffset = ResolveElapsedLocked();
+            _positionStartedAt = null;
             _status = PlaybackStatus.Detached;
         }
 
@@ -214,7 +268,7 @@ public sealed class PlaybackQueue
     {
         lock (_syncRoot)
         {
-            return new PlayerSnapshot(_status, _current, _pending.ToList());
+            return new PlayerSnapshot(_status, _current, _pending.ToList(), ResolveElapsedLocked());
         }
     }
 
@@ -230,6 +284,7 @@ public sealed class PlaybackQueue
             next = _pending.Dequeue();
             _current = next;
             _status = PlaybackStatus.Playing;
+            ResetPositionLocked(startRunning: true);
         }
 
         await _mpv.PlayAsync(next, cancellationToken);
@@ -246,11 +301,13 @@ public sealed class PlaybackQueue
                 next = _pending.Dequeue();
                 _current = next;
                 _status = PlaybackStatus.Playing;
+                ResetPositionLocked(startRunning: true);
             }
             else
             {
                 _current = null;
                 _status = PlaybackStatus.Stopped;
+                ResetPositionLocked(startRunning: false);
                 LastMessage = "Queue finished.";
             }
         }
@@ -278,6 +335,32 @@ public sealed class PlaybackQueue
         {
             return _current is not null && _status is PlaybackStatus.Playing or PlaybackStatus.Paused;
         }
+    }
+
+    private void ResetPositionLocked(bool startRunning)
+    {
+        _positionOffset = TimeSpan.Zero;
+        _positionStartedAt = startRunning ? DateTimeOffset.UtcNow : null;
+    }
+
+    private TimeSpan ResolveElapsedLocked()
+    {
+        var elapsed = _positionOffset;
+        if (_status == PlaybackStatus.Playing && _positionStartedAt is not null)
+            elapsed += DateTimeOffset.UtcNow - _positionStartedAt.Value;
+
+        return ClampElapsedLocked(elapsed);
+    }
+
+    private TimeSpan ClampElapsedLocked(TimeSpan elapsed)
+    {
+        if (elapsed < TimeSpan.Zero)
+            return TimeSpan.Zero;
+
+        if (_current?.Duration is { } duration && elapsed > duration)
+            return duration;
+
+        return elapsed;
     }
 
     private void SetStatus(PlaybackStatus status)

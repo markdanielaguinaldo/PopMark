@@ -39,6 +39,7 @@ dotnet run --project .\PopMark\PopMark.csproj -- play-test "https://www.youtube.
 - `add <url>`: add a YouTube video or playlist
 - `play` or `pause`: toggle playback
 - `next`: skip to the next track
+- `seek <seconds>`: fast forward or rewind, for example `seek 30` or `seek -30`
 - `cls` or `clear`: clear and redraw the command center
 - `mini`: toggle compact player mode
 - `quit`: stop playback and exit

@@ -101,6 +101,9 @@ public sealed class MpvPlayer
     public Task AppendAsync(Track track, CancellationToken cancellationToken = default) =>
         SendCommandAsync(["loadfile", track.Url, "append-play"], cancellationToken);
 
+    public Task SeekRelativeAsync(int seconds, CancellationToken cancellationToken = default) =>
+        SendCommandAsync(["seek", seconds, "relative"], cancellationToken);
+
     public async Task StopAsync(CancellationToken cancellationToken = default)
     {
         Process? process;

@@ -104,6 +104,9 @@ public sealed class MpvPlayer
     public Task SeekRelativeAsync(int seconds, CancellationToken cancellationToken = default) =>
         SendCommandAsync(["seek", seconds, "relative"], cancellationToken);
 
+    public Task SeekAbsoluteAsync(TimeSpan timestamp, CancellationToken cancellationToken = default) =>
+        SendCommandAsync(["seek", timestamp.TotalSeconds, "absolute"], cancellationToken);
+
     public async Task StopAsync(CancellationToken cancellationToken = default)
     {
         Process? process;

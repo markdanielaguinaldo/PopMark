@@ -107,10 +107,24 @@ internal static class Program
 
                 try
                 {
+                    if (TryResolveProgressClickCommand(parsedArgs[0], player.CreateSnapshot(), out var timestamp))
+                    {
+                        await player.SeekAbsoluteAsync(timestamp);
+                        notice = player.LastMessage;
+                        (lastWidth, lastHeight) = ConsoleHelper.GetWindowSize();
+                        continue;
+                    }
+
                     if (TryProcessQueueScrollCommand(parsedArgs[0], player.CreateSnapshot(), ref queueScrollOffset, out var scrollMessage))
                     {
                         player.LastMessage = scrollMessage;
                         notice = scrollMessage;
+                        (lastWidth, lastHeight) = ConsoleHelper.GetWindowSize();
+                        continue;
+                    }
+
+                    if (IsInternalCommand(parsedArgs[0]))
+                    {
                         (lastWidth, lastHeight) = ConsoleHelper.GetWindowSize();
                         continue;
                     }
@@ -480,6 +494,14 @@ internal static class Program
 
         switch (command.ToLowerInvariant())
         {
+            case "__queue-up":
+                queueScrollOffset = Math.Max(0, queueScrollOffset - 1);
+                message = "Playlist scrolled up.";
+                return true;
+            case "__queue-down":
+                queueScrollOffset = Math.Min(maxOffset, queueScrollOffset + 1);
+                message = "Playlist scrolled down.";
+                return true;
             case "__queue-page-up":
                 queueScrollOffset = Math.Max(0, queueScrollOffset - scrollStep);
                 message = "Playlist scrolled up.";
@@ -500,6 +522,19 @@ internal static class Program
                 message = string.Empty;
                 return false;
         }
+    }
+
+    private static bool TryResolveProgressClickCommand(string command, PlayerSnapshot snapshot, out TimeSpan timestamp)
+    {
+        timestamp = TimeSpan.Zero;
+        if (!command.StartsWith("__progress-click:", StringComparison.Ordinal))
+            return false;
+
+        var parts = command.Split(':');
+        return parts.Length == 3 &&
+               int.TryParse(parts[1], out var x) &&
+               int.TryParse(parts[2], out var y) &&
+               ConsoleHelper.TryResolveProgressClick(x, y, snapshot, out timestamp);
     }
 
     private static bool IsLikelyUrl(string value) =>

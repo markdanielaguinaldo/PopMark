@@ -7,7 +7,9 @@ namespace PopMark.Helpers.Terminal;
 internal static class TerminalHost
 {
     private const int StdOutputHandle = -11;
+    private const int StdInputHandle = -10;
     private const uint EnableVirtualTerminalProcessing = 0x0004;
+    private const uint EnableVirtualTerminalInput = 0x0200;
     private static bool _usingAlternateScreen;
 
     [DllImport("kernel32.dll", SetLastError = true)]
@@ -43,6 +45,13 @@ internal static class TerminalHost
                 return;
 
             _ = SetConsoleMode(outputHandle, mode | EnableVirtualTerminalProcessing);
+
+            var inputHandle = GetStdHandle(StdInputHandle);
+            if (inputHandle == 0 || inputHandle == -1)
+                return;
+
+            if (GetConsoleMode(inputHandle, out var inputMode))
+                _ = SetConsoleMode(inputHandle, inputMode | EnableVirtualTerminalInput);
         }
         catch
         {
@@ -54,7 +63,7 @@ internal static class TerminalHost
         if (Console.IsOutputRedirected || _usingAlternateScreen)
             return;
 
-        Console.Write("\u001b[?1049h\u001b[?25l\u001b[H\u001b[2J");
+        Console.Write("\u001b[?1049h\u001b[?1000h\u001b[?1006h\u001b[?25l\u001b[H\u001b[2J");
         _usingAlternateScreen = true;
         TerminalFrameRenderer.ResetFrameCache();
     }
@@ -65,7 +74,7 @@ internal static class TerminalHost
             return;
 
         TerminalFrameRenderer.ResetFrameCache();
-        Console.Write("\u001b[?25h\u001b[?1049l");
+        Console.Write("\u001b[?1006l\u001b[?1000l\u001b[?25h\u001b[?1049l");
         _usingAlternateScreen = false;
     }
 
@@ -98,7 +107,7 @@ internal static class TerminalHost
         try
         {
             if (!Console.IsOutputRedirected)
-                Console.Write("\u001b[?25h\u001b[0 q");
+                Console.Write("\u001b[?1006l\u001b[?1000l\u001b[?25h\u001b[0 q");
         }
         catch
         {

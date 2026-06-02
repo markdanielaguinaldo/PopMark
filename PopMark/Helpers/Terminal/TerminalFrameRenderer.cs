@@ -8,6 +8,7 @@ internal static class TerminalFrameRenderer
     private static List<string>? _lastRenderedLines;
     private static int _lastRenderedWidth;
     private static int _lastRenderedHeight;
+    private static ProgressHitbox? _lastProgressHitbox;
 
     public static void DrawCommandCenter(PlayerSnapshot snapshot, string notice, bool showHelp = false, int queueScrollOffset = 0)
     {
@@ -92,11 +93,31 @@ internal static class TerminalFrameRenderer
         _lastRenderedHeight = height;
     }
 
+    public static bool TryResolveProgressClick(int x, int y, PlayerSnapshot snapshot, out TimeSpan timestamp)
+    {
+        timestamp = TimeSpan.Zero;
+        if (_lastProgressHitbox is not { } hitbox ||
+            snapshot.Current?.Duration is not { TotalSeconds: > 0 } duration ||
+            y != hitbox.Y ||
+            x < hitbox.X ||
+            x >= hitbox.X + hitbox.Width)
+        {
+            return false;
+        }
+
+        var ratio = hitbox.Width <= 1
+            ? 0
+            : (double)(x - hitbox.X) / (hitbox.Width - 1);
+        timestamp = TimeSpan.FromSeconds(duration.TotalSeconds * Math.Clamp(ratio, 0, 1));
+        return true;
+    }
+
     public static void ResetFrameCache()
     {
         _lastRenderedLines = null;
         _lastRenderedWidth = 0;
         _lastRenderedHeight = 0;
+        _lastProgressHitbox = null;
     }
 
     private static List<string> BuildTerminalFrame(RenderContext context) =>
@@ -112,7 +133,10 @@ internal static class TerminalFrameRenderer
         var available = Math.Max(0, height - 1);
         var lines = new List<string>();
         if (available == 0)
+        {
+            _lastProgressHitbox = null;
             return [prompt];
+        }
 
         var footer = FooterComponent(width, context.ShowHelp);
         var playbackHeight = available >= 9 ? 5 : available >= 8 ? 4 : available >= 5 ? 3 : 0;
@@ -136,7 +160,14 @@ internal static class TerminalFrameRenderer
         }
 
         if (playbackHeight > 0)
+        {
+            _lastProgressHitbox = CreateProgressHitbox(context.Snapshot, width, lines.Count + 2);
             lines.AddRange(PlaybackStripComponent(context, width, playbackHeight));
+        }
+        else
+        {
+            _lastProgressHitbox = null;
+        }
 
         if (footerHeight > 0)
             lines.AddRange(footer.Take(footerHeight));
@@ -158,7 +189,12 @@ internal static class TerminalFrameRenderer
         var prompt = PromptComponent(context.Input, width);
         var available = Math.Max(0, height - 1);
         if (available == 0)
+        {
+            _lastProgressHitbox = null;
             return [prompt];
+        }
+
+        _lastProgressHitbox = null;
 
         var blockWidth = Math.Min(width, Math.Max(42, Math.Min(72, width - 2)));
         var leftPad = Math.Max(0, (width - blockWidth) / 2);
@@ -289,7 +325,7 @@ internal static class TerminalFrameRenderer
         {
             return
             [
-                TerminalText.PadAnsiAware($"{TerminalStyles.AnsiMuted}SPACE{TerminalStyles.Reset} play/pause {TerminalStyles.AnsiChrome}|{TerminalStyles.Reset} {TerminalStyles.AnsiMuted}next/prev{TerminalStyles.Reset} tracks {TerminalStyles.AnsiChrome}|{TerminalStyles.Reset} {TerminalStyles.AnsiMuted}LEFT/RIGHT{TerminalStyles.Reset} +/-10s {TerminalStyles.AnsiChrome}|{TerminalStyles.Reset} {TerminalStyles.AnsiMuted}PGUP/PGDN{TerminalStyles.Reset} playlist {TerminalStyles.AnsiChrome}|{TerminalStyles.Reset} {TerminalStyles.AnsiMuted}mini{TerminalStyles.Reset} view {TerminalStyles.AnsiChrome}|{TerminalStyles.Reset} {TerminalStyles.AnsiMuted}quit{TerminalStyles.Reset}", width)
+                TerminalText.PadAnsiAware($"{TerminalStyles.AnsiMuted}SPACE{TerminalStyles.Reset} play/pause {TerminalStyles.AnsiChrome}|{TerminalStyles.Reset} {TerminalStyles.AnsiMuted}LEFT/RIGHT{TerminalStyles.Reset} +/-10s {TerminalStyles.AnsiChrome}|{TerminalStyles.Reset} {TerminalStyles.AnsiMuted}click bar{TerminalStyles.Reset} seek {TerminalStyles.AnsiChrome}|{TerminalStyles.Reset} {TerminalStyles.AnsiMuted}UP/DOWN/WHEEL{TerminalStyles.Reset} playlist {TerminalStyles.AnsiChrome}|{TerminalStyles.Reset} {TerminalStyles.AnsiMuted}next/prev{TerminalStyles.Reset} tracks", width)
             ];
         }
 
@@ -299,12 +335,13 @@ internal static class TerminalFrameRenderer
                 $"{TerminalStyles.AnsiAccent}add <url>{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}load a YouTube video or playlist{TerminalStyles.Reset}",
                 $"{TerminalStyles.AnsiAccent}play/pause{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}toggle playback{TerminalStyles.Reset}   {TerminalStyles.AnsiAccent}next/prev{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}skip or return a track{TerminalStyles.Reset}",
                 $"{TerminalStyles.AnsiAccent}LEFT/RIGHT arrows{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}seek backward or forward by 10s{TerminalStyles.Reset}",
-                $"{TerminalStyles.AnsiAccent}PageUp/PageDown/Home/End{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}scroll the playlist panel{TerminalStyles.Reset}",
+                $"{TerminalStyles.AnsiAccent}click progress bar{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}jump to that timestamp when mouse is supported{TerminalStyles.Reset}",
+                $"{TerminalStyles.AnsiAccent}Up/Down/Wheel/PageUp/PageDown/Home/End{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}scroll playlist{TerminalStyles.Reset}",
                 $"{TerminalStyles.AnsiAccent}clear playlist{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}stop playback and empty the queue{TerminalStyles.Reset}",
                 $"{TerminalStyles.AnsiAccent}mini{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}compact view{TerminalStyles.Reset}   {TerminalStyles.AnsiAccent}cls{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}redraw{TerminalStyles.Reset}   {TerminalStyles.AnsiAccent}q{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}quit{TerminalStyles.Reset}"
             ],
             width,
-            8,
+            9,
             TerminalStyles.AnsiChrome);
     }
 
@@ -520,4 +557,17 @@ internal static class TerminalFrameRenderer
 
         return Math.Clamp(elapsed.TotalSeconds / duration.TotalSeconds, 0, 1);
     }
+
+    private static ProgressHitbox? CreateProgressHitbox(PlayerSnapshot snapshot, int width, int y)
+    {
+        if (snapshot.Current?.Duration is not { TotalSeconds: > 0 })
+            return null;
+
+        var contentWidth = Math.Max(8, width - 6);
+        var time = $"{FormatDuration(snapshot.Elapsed)} / {FormatDuration(snapshot.Current.Duration)}";
+        var progressWidth = Math.Max(8, contentWidth - TerminalText.VisibleLength(time) - 3);
+        return new ProgressHitbox(X: 3, Y: y, Width: progressWidth);
+    }
+
+    private sealed record ProgressHitbox(int X, int Y, int Width);
 }

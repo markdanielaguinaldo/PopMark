@@ -23,6 +23,9 @@ public static class ConsoleHelper
     public static void DrawMiniPlayer(PlayerSnapshot snapshot, string notice) =>
         TerminalFrameRenderer.DrawMiniPlayer(snapshot, notice);
 
+    public static bool TryResolveProgressClick(int x, int y, PlayerSnapshot snapshot, out TimeSpan timestamp) =>
+        TerminalFrameRenderer.TryResolveProgressClick(x, y, snapshot, out timestamp);
+
     public static string ReadReactiveInput(
         ref int lastWidth,
         ref int lastHeight,

@@ -23,16 +23,13 @@ internal static class ReactiveInputReader
         }
 
         var buffer = new StringBuilder();
-        var historyIndex = commandHistory.Count;
-        var browsingHistory = false;
-        var draftInput = string.Empty;
         var animationFrame = 0;
         var lastRefresh = DateTimeOffset.MinValue;
         var lastScreenSignature = string.Empty;
         var trackedWidth = lastWidth;
         var trackedHeight = lastHeight;
 
-        bool IsInputActive() => buffer.Length > 0 || browsingHistory;
+        bool IsInputActive() => buffer.Length > 0;
 
         void RefreshScreen(bool advanceAnimation = false)
         {
@@ -102,10 +99,18 @@ internal static class ReactiveInputReader
 
             var key = Console.ReadKey(intercept: true);
 
-            if (key.Key == ConsoleKey.L && key.Modifiers.HasFlag(ConsoleModifiers.Control))
+            if (TryResolveTerminalCommand(key, buffer.Length == 0, out var terminalCommand))
+            {
+                if (string.IsNullOrWhiteSpace(terminalCommand))
+                    continue;
+
+                return ReturnWithSize(terminalCommand, ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
+            }
+
+            if (IsClearScreenKey(key))
                 return ReturnWithSize("cls", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
 
-            if (buffer.Length == 0 && !browsingHistory)
+            if (buffer.Length == 0)
             {
                 switch (key.Key)
                 {
@@ -119,6 +124,10 @@ internal static class ReactiveInputReader
                         return ReturnWithSize("__queue-page-up", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
                     case ConsoleKey.PageDown:
                         return ReturnWithSize("__queue-page-down", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
+                    case ConsoleKey.UpArrow:
+                        return ReturnWithSize("__queue-up", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
+                    case ConsoleKey.DownArrow:
+                        return ReturnWithSize("__queue-down", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
                     case ConsoleKey.Home:
                         return ReturnWithSize("__queue-home", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
                     case ConsoleKey.End:
@@ -128,59 +137,13 @@ internal static class ReactiveInputReader
                 }
             }
 
-            if (key.Key == ConsoleKey.Enter)
+            if (IsEnterKey(key))
                 return ReturnWithSize(buffer.ToString().Trim(), ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
 
-            if (key.Key == ConsoleKey.Escape)
+            if (IsEscapeKey(key))
                 return ReturnWithSize(string.Empty, ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
 
-            if (key.Key == ConsoleKey.UpArrow)
-            {
-                if (commandHistory.Count == 0)
-                    continue;
-
-                if (!browsingHistory)
-                {
-                    draftInput = buffer.ToString();
-                    browsingHistory = true;
-                    historyIndex = commandHistory.Count;
-                }
-
-                if (historyIndex > 0)
-                {
-                    historyIndex--;
-                    buffer.Clear();
-                    buffer.Append(commandHistory[historyIndex]);
-                    RefreshScreen();
-                }
-
-                continue;
-            }
-
-            if (key.Key == ConsoleKey.DownArrow)
-            {
-                if (!browsingHistory)
-                    continue;
-
-                if (historyIndex < commandHistory.Count - 1)
-                {
-                    historyIndex++;
-                    buffer.Clear();
-                    buffer.Append(commandHistory[historyIndex]);
-                }
-                else
-                {
-                    historyIndex = commandHistory.Count;
-                    browsingHistory = false;
-                    buffer.Clear();
-                    buffer.Append(draftInput);
-                }
-
-                RefreshScreen();
-                continue;
-            }
-
-            if (key.Key == ConsoleKey.Backspace)
+            if (IsBackspaceKey(key))
             {
                 if (buffer.Length > 0)
                 {
@@ -206,6 +169,149 @@ internal static class ReactiveInputReader
         lastHeight = trackedHeight;
         return value;
     }
+
+    private static bool TryResolveTerminalCommand(ConsoleKeyInfo key, bool shortcutsEnabled, out string command)
+    {
+        command = string.Empty;
+        if (!IsEscapeKey(key))
+            return false;
+
+        var sequence = new StringBuilder().Append('\u001b');
+        var deadline = DateTimeOffset.UtcNow.AddMilliseconds(150);
+        while (sequence.Length < 64 && DateTimeOffset.UtcNow <= deadline)
+        {
+            if (!Console.KeyAvailable)
+            {
+                Thread.Sleep(1);
+                continue;
+            }
+
+            var next = Console.ReadKey(intercept: true);
+            if (next.KeyChar == '\0')
+                continue;
+
+            sequence.Append(next.KeyChar);
+            if (IsCompleteEscapeSequence(sequence))
+                break;
+        }
+
+        var value = sequence.ToString();
+        if (TryResolveSgrMouseCommand(value, out command) ||
+            TryResolveLegacyMouseCommand(value, out command) ||
+            TryResolveCsiShortcutCommand(value, shortcutsEnabled, out command))
+        {
+            return true;
+        }
+
+        if (value.StartsWith("\u001b[", StringComparison.Ordinal) ||
+            value.StartsWith("\u001bO", StringComparison.Ordinal))
+            return true;
+
+        return false;
+    }
+
+    private static bool TryResolveSgrMouseCommand(string sequence, out string command)
+    {
+        command = string.Empty;
+        if (!sequence.StartsWith("\u001b[<", StringComparison.Ordinal))
+            return false;
+
+        var final = sequence[^1];
+        if (final != 'M')
+            return true;
+
+        var body = sequence[3..^1];
+        var parts = body.Split(';');
+        if (parts.Length != 3 ||
+            !int.TryParse(parts[0], out var button) ||
+            !int.TryParse(parts[1], out var x) ||
+            !int.TryParse(parts[2], out var y))
+        {
+            return true;
+        }
+
+        command = ResolveMouseButtonCommand(button, x, y);
+        return true;
+    }
+
+    private static bool TryResolveLegacyMouseCommand(string sequence, out string command)
+    {
+        command = string.Empty;
+        if (!sequence.StartsWith("\u001b[M", StringComparison.Ordinal) || sequence.Length < 6)
+            return false;
+
+        var button = sequence[3] - 32;
+        var x = sequence[4] - 32;
+        var y = sequence[5] - 32;
+        command = ResolveMouseButtonCommand(button, x, y);
+        return true;
+    }
+
+    private static bool TryResolveCsiShortcutCommand(string sequence, bool shortcutsEnabled, out string command)
+    {
+        command = string.Empty;
+        if (!shortcutsEnabled)
+            return sequence.StartsWith("\u001b[", StringComparison.Ordinal) ||
+                   sequence.StartsWith("\u001bO", StringComparison.Ordinal);
+
+        command = sequence switch
+        {
+            "\u001b[A" => "__queue-up",
+            "\u001b[B" => "__queue-down",
+            "\u001b[C" => "__seek-forward",
+            "\u001b[D" => "__seek-back",
+            "\u001b[5~" => "__queue-page-up",
+            "\u001b[6~" => "__queue-page-down",
+            "\u001b[H" or "\u001b[1~" or "\u001bOH" => "__queue-home",
+            "\u001b[F" or "\u001b[4~" or "\u001bOF" => "__queue-end",
+            _ => string.Empty
+        };
+
+        return !string.IsNullOrWhiteSpace(command) ||
+               sequence.StartsWith("\u001b[", StringComparison.Ordinal) ||
+               sequence.StartsWith("\u001bO", StringComparison.Ordinal);
+    }
+
+    private static string ResolveMouseButtonCommand(int button, int x, int y)
+    {
+        if ((button & 64) == 64)
+            return (button & 1) == 0 ? "__queue-up" : "__queue-down";
+
+        return (button & 3) == 0
+            ? $"__progress-click:{x}:{y}"
+            : string.Empty;
+    }
+
+    private static bool IsCompleteEscapeSequence(StringBuilder sequence)
+    {
+        var value = sequence.ToString();
+        if (value.StartsWith("\u001b[M", StringComparison.Ordinal))
+            return value.Length >= 6;
+
+        if (value.StartsWith("\u001b[<", StringComparison.Ordinal))
+            return value[^1] is 'M' or 'm';
+
+        if (value.StartsWith("\u001bO", StringComparison.Ordinal))
+            return value.Length >= 3;
+
+        return value.Length >= 3 && value[^1] is >= '@' and <= '~';
+    }
+
+    private static bool IsClearScreenKey(ConsoleKeyInfo key) =>
+        key.Key == ConsoleKey.L && key.Modifiers.HasFlag(ConsoleModifiers.Control) ||
+        key.KeyChar == '\f';
+
+    private static bool IsEnterKey(ConsoleKeyInfo key) =>
+        key.Key == ConsoleKey.Enter ||
+        key.KeyChar is '\r' or '\n';
+
+    private static bool IsEscapeKey(ConsoleKeyInfo key) =>
+        key.Key == ConsoleKey.Escape ||
+        key.KeyChar == '\u001b';
+
+    private static bool IsBackspaceKey(ConsoleKeyInfo key) =>
+        key.Key == ConsoleKey.Backspace ||
+        key.KeyChar is '\b' or '\u007f';
 
     private static string? BuildScreenSignature(
         Func<PlayerSnapshot>? snapshotProvider,

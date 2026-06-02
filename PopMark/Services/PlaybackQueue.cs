@@ -238,6 +238,31 @@ public sealed class PlaybackQueue
         NotifySnapshotChanged();
     }
 
+    public async Task SeekAbsoluteAsync(TimeSpan timestamp, CancellationToken cancellationToken = default)
+    {
+        if (!HasCurrentTrack())
+        {
+            LastMessage = "Nothing is playing.";
+            return;
+        }
+
+        TimeSpan target;
+        lock (_syncRoot)
+        {
+            target = ClampElapsedLocked(timestamp);
+        }
+
+        await _mpv.SeekAbsoluteAsync(target, cancellationToken);
+        lock (_syncRoot)
+        {
+            _positionOffset = target;
+            _positionStartedAt = _status == PlaybackStatus.Playing ? DateTimeOffset.UtcNow : null;
+        }
+
+        LastMessage = $"Jumped to {FormatDuration(target)}.";
+        NotifySnapshotChanged();
+    }
+
     public async Task StopAsync(bool clearQueue, CancellationToken cancellationToken = default)
     {
         lock (_syncRoot)
@@ -438,4 +463,9 @@ public sealed class PlaybackQueue
     }
 
     private void NotifySnapshotChanged() => SnapshotChanged?.Invoke(CreateSnapshot());
+
+    private static string FormatDuration(TimeSpan duration) =>
+        duration.TotalHours >= 1
+            ? duration.ToString(@"h\:mm\:ss")
+            : duration.ToString(@"m\:ss");
 }

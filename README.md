@@ -63,7 +63,9 @@ dotnet run --project .\PopMark\PopMark.csproj -- play-test "https://www.youtube.
 | `next` | Skip to the next track |
 | `prev` / `previous` | Return to the previous track |
 | `Left Arrow` / `Right Arrow` | Seek backward or forward by 10 seconds |
-| `PageUp` / `PageDown` / `Home` / `End` | Scroll the playlist panel |
+| Click progress bar | Jump to that timestamp when the terminal supports mouse input |
+| `Up Arrow` / `Down Arrow` / mouse wheel | Scroll the playlist panel by one row |
+| `PageUp` / `PageDown` / `Home` / `End` | Scroll the playlist panel faster |
 | `clear playlist` | Stop playback and empty the queue |
 | `mini` | Toggle compact player mode |
 | `cls` / `clear` | Redraw the terminal UI |

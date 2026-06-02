@@ -414,7 +414,7 @@ public static class ConsoleHelper
                                 _lastRenderedWidth != width ||
                                 _lastRenderedHeight != height;
         var output = new StringBuilder();
-        output.Append("\u001b[?25l");
+        output.Append("\u001b[?25l\u001b[?7l");
         output.Append(requiresFullPaint ? "\u001b[H\u001b[2J" : "\u001b[H");
 
         for (var i = 0; i < lines.Count; i++)
@@ -429,6 +429,7 @@ public static class ConsoleHelper
                 output.Append("\u001b[1E");
         }
 
+        output.Append("\u001b[?7h");
         Console.Write(output.ToString());
         _lastRenderedLines = [.. lines];
         _lastRenderedWidth = width;
@@ -589,7 +590,7 @@ public static class ConsoleHelper
         if (height >= 5)
             rows.Add(string.Empty);
 
-        rows.Add(ScanlineVisualizer(context.Snapshot.Status, context.AnimationFrame, contentWidth));
+        rows.Add(BrailleWaveVisualizer(context.Snapshot.Status, context.AnimationFrame, contentWidth));
 
         return Box("Playback", rows, width, height, AnsiChrome);
     }
@@ -728,7 +729,7 @@ public static class ConsoleHelper
         return $"{AnsiAccent}{new string('█', filled)}{AnsiChrome}{new string('░', empty)}{Reset}";
     }
 
-    private static string ScanlineVisualizer(PlaybackStatus status, int frame, int width)
+    private static string BrailleWaveVisualizer(PlaybackStatus status, int frame, int width)
     {
         width = Math.Max(1, width);
         var style = status switch
@@ -738,21 +739,17 @@ public static class ConsoleHelper
             _ => AnsiChrome
         };
 
-        if (status is not (PlaybackStatus.Playing or PlaybackStatus.Loading))
-            return $"{style}{new string('─', width)}{Reset}";
+        if (status == PlaybackStatus.Paused)
+            return $"{style}{new string('⣤', width)}{Reset}";
 
-        var segmentWidth = Math.Clamp(width / 5, 4, 12);
-        var travel = Math.Max(1, width - segmentWidth);
-        var position = frame % (travel + 1);
-        var output = new StringBuilder();
-        output.Append(AnsiChrome);
-        output.Append(new string('─', position));
-        output.Append(style);
-        output.Append(new string('━', segmentWidth));
-        output.Append(AnsiChrome);
-        output.Append(new string('─', Math.Max(0, width - position - segmentWidth)));
-        output.Append(Reset);
-        return TrimAnsiAware(output.ToString(), width);
+        if (status is not (PlaybackStatus.Playing or PlaybackStatus.Loading))
+            return $"{style}{new string('⣀', width)}{Reset}";
+
+        var wave = new[] { "⣀", "⣄", "⣤", "⣦", "⣶", "⣷", "⣿", "⣷", "⣶", "⣦", "⣤", "⣄" };
+        var cells = Enumerable.Range(0, width)
+            .Select(i => wave[(frame + (i * 2) + (i % 3)) % wave.Length]);
+
+        return TrimAnsiAware($"{style}{string.Concat(cells)}{Reset}", width);
     }
 
     private static string CompactBarsVisualizer(PlaybackStatus status, int frame, int width)
@@ -794,11 +791,10 @@ public static class ConsoleHelper
 
         var visible = 0;
         var output = new StringBuilder();
-        for (var i = 0; i < value.Length && visible < width; i++)
+        for (var i = 0; i < value.Length;)
         {
             if (value[i] == '\u001b')
             {
-                var start = i;
                 output.Append(value[i]);
                 while (i + 1 < value.Length)
                 {
@@ -808,14 +804,19 @@ public static class ConsoleHelper
                         break;
                 }
 
-                if (i == start)
-                    visible++;
-
+                i++;
                 continue;
             }
 
-            output.Append(value[i]);
-            visible++;
+            var codePoint = char.ConvertToUtf32(value, i);
+            var charLength = char.IsSurrogatePair(value, i) ? 2 : 1;
+            var charWidth = CellWidth(codePoint);
+            if (visible + charWidth > width)
+                break;
+
+            output.Append(value, i, charLength);
+            visible += charWidth;
+            i += charLength;
         }
 
         if (VisibleLength(value) > width)
@@ -827,7 +828,7 @@ public static class ConsoleHelper
     private static int VisibleLength(string value)
     {
         var visible = 0;
-        for (var i = 0; i < value.Length; i++)
+        for (var i = 0; i < value.Length;)
         {
             if (value[i] == '\u001b')
             {
@@ -838,13 +839,69 @@ public static class ConsoleHelper
                         break;
                 }
 
+                i++;
                 continue;
             }
 
-            visible++;
+            var codePoint = char.ConvertToUtf32(value, i);
+            visible += CellWidth(codePoint);
+            i += char.IsSurrogatePair(value, i) ? 2 : 1;
         }
 
         return visible;
+    }
+
+    private static int CellWidth(int codePoint)
+    {
+        if (codePoint == 0 ||
+            codePoint < 32 ||
+            codePoint is >= 0x7F and < 0xA0 ||
+            codePoint is >= 0x300 and <= 0x36F ||
+            codePoint is >= 0x1AB0 and <= 0x1AFF ||
+            codePoint is >= 0x1DC0 and <= 0x1DFF ||
+            codePoint is >= 0x20D0 and <= 0x20FF ||
+            codePoint is >= 0xFE00 and <= 0xFE0F)
+        {
+            return 0;
+        }
+
+        return IsWideCodePoint(codePoint) ? 2 : 1;
+    }
+
+    private static bool IsWideCodePoint(int codePoint) =>
+        codePoint is >= 0x1100 and <= 0x115F ||
+        codePoint is >= 0x2329 and <= 0x232A ||
+        codePoint is >= 0x2E80 and <= 0xA4CF and not 0x303F ||
+        codePoint is >= 0xAC00 and <= 0xD7A3 ||
+        codePoint is >= 0xF900 and <= 0xFAFF ||
+        codePoint is >= 0xFE10 and <= 0xFE19 ||
+        codePoint is >= 0xFE30 and <= 0xFE6F ||
+        codePoint is >= 0xFF00 and <= 0xFF60 ||
+        codePoint is >= 0xFFE0 and <= 0xFFE6 ||
+        codePoint is >= 0x1F300 and <= 0x1FAFF ||
+        codePoint is >= 0x20000 and <= 0x3FFFD;
+ 
+    private static string TrimPlainTextForWidth(string value, int width)
+    {
+        if (width <= 0)
+            return string.Empty;
+
+        var visible = 0;
+        var output = new StringBuilder();
+        for (var i = 0; i < value.Length;)
+        {
+            var codePoint = char.ConvertToUtf32(value, i);
+            var charLength = char.IsSurrogatePair(value, i) ? 2 : 1;
+            var charWidth = CellWidth(codePoint);
+            if (visible + charWidth > width)
+                break;
+
+            output.Append(value, i, charLength);
+            visible += charWidth;
+            i += charLength;
+        }
+
+        return output.ToString();
     }
 
     private static string TailForWidth(string value, int width)
@@ -852,10 +909,28 @@ public static class ConsoleHelper
         if (width <= 0)
             return string.Empty;
 
-        if (value.Length <= width)
+        if (VisibleLength(value) <= width)
             return value;
 
-        return value[^width..];
+        var visible = 0;
+        var start = value.Length;
+        for (var i = value.Length - 1; i >= 0;)
+        {
+            var charStart = i;
+            if (char.IsLowSurrogate(value[i]) && i > 0 && char.IsHighSurrogate(value[i - 1]))
+                charStart = i - 1;
+
+            var codePoint = char.ConvertToUtf32(value, charStart);
+            var charWidth = CellWidth(codePoint);
+            if (visible + charWidth > width)
+                break;
+
+            visible += charWidth;
+            start = charStart;
+            i = charStart - 1;
+        }
+
+        return value[start..];
     }
 
     private sealed record RenderContext(
@@ -1006,10 +1081,12 @@ public static class ConsoleHelper
 
     private static string TrimForWidget(string value, int maxLength)
     {
-        if (value.Length <= maxLength)
+        if (VisibleLength(value) <= maxLength)
             return value;
 
-        return maxLength <= 3 ? value[..maxLength] : $"{value[..(maxLength - 3)]}...";
+        return maxLength <= 3
+            ? TrimPlainTextForWidth(value, maxLength)
+            : $"{TrimPlainTextForWidth(value, maxLength - 3)}...";
     }
 
     private static IRenderable CreateSplashFrame(int frame)

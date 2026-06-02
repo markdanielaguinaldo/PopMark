@@ -111,6 +111,12 @@ internal static class ReactiveInputReader
                         return ReturnWithSize("play", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
                     case ConsoleKey.N:
                         return ReturnWithSize("next", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
+                    case ConsoleKey.P:
+                        return ReturnWithSize("previous", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
+                    case ConsoleKey.RightArrow:
+                        return ReturnWithSize("__seek-forward", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
+                    case ConsoleKey.LeftArrow:
+                        return ReturnWithSize("__seek-back", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
                     case ConsoleKey.M:
                         return ReturnWithSize("mini", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
                     case ConsoleKey.Q:

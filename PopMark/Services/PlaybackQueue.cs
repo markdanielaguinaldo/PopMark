@@ -7,6 +7,7 @@ public sealed class PlaybackQueue
     private readonly YtDlpService _ytDlp;
     private readonly MpvPlayer _mpv;
     private readonly Queue<Track> _pending = new();
+    private readonly Stack<Track> _previous = new();
     private readonly object _syncRoot = new();
     private Track? _current;
     private PlaybackStatus _status = PlaybackStatus.Stopped;
@@ -58,6 +59,7 @@ public sealed class PlaybackQueue
         lock (_syncRoot)
         {
             _pending.Clear();
+            _previous.Clear();
             _current = snapshot.Current;
             _status = PlaybackStatus.Stopped;
 
@@ -159,6 +161,9 @@ public sealed class PlaybackQueue
         Track? next;
         lock (_syncRoot)
         {
+            if (_current is not null)
+                _previous.Push(_current);
+
             next = _pending.Count > 0 ? _pending.Dequeue() : null;
             if (next is null)
             {
@@ -183,6 +188,31 @@ public sealed class PlaybackQueue
 
         await _mpv.PlayAsync(next, cancellationToken);
         LastMessage = $"Now playing: {next.Title}";
+        NotifySnapshotChanged();
+    }
+
+    public async Task PreviousAsync(CancellationToken cancellationToken = default)
+    {
+        Track? previous;
+        lock (_syncRoot)
+        {
+            previous = _previous.Count > 0 ? _previous.Pop() : null;
+            if (previous is null)
+            {
+                LastMessage = "No previous track.";
+                return;
+            }
+
+            if (_current is not null)
+                PrependPendingLocked(_current);
+
+            _current = previous;
+            _status = PlaybackStatus.Playing;
+            ResetPositionLocked(startRunning: true);
+        }
+
+        await _mpv.PlayAsync(previous, cancellationToken);
+        LastMessage = $"Returned to: {previous.Title}";
         NotifySnapshotChanged();
     }
 
@@ -216,7 +246,10 @@ public sealed class PlaybackQueue
             _status = PlaybackStatus.Stopped;
             ResetPositionLocked(startRunning: false);
             if (clearQueue)
+            {
                 _pending.Clear();
+                _previous.Clear();
+            }
         }
 
         await _mpv.StopAsync(cancellationToken);
@@ -230,6 +263,7 @@ public sealed class PlaybackQueue
         {
             _current = null;
             _pending.Clear();
+            _previous.Clear();
             _status = PlaybackStatus.Stopped;
             ResetPositionLocked(startRunning: false);
         }
@@ -313,6 +347,9 @@ public sealed class PlaybackQueue
         {
             if (_pending.Count > 0)
             {
+                if (_current is not null)
+                    _previous.Push(_current);
+
                 next = _pending.Dequeue();
                 _current = next;
                 _status = PlaybackStatus.Playing;
@@ -320,6 +357,9 @@ public sealed class PlaybackQueue
             }
             else
             {
+                if (_current is not null)
+                    _previous.Push(_current);
+
                 _current = null;
                 _status = PlaybackStatus.Stopped;
                 ResetPositionLocked(startRunning: false);
@@ -356,6 +396,16 @@ public sealed class PlaybackQueue
     {
         _positionOffset = TimeSpan.Zero;
         _positionStartedAt = startRunning ? DateTimeOffset.UtcNow : null;
+    }
+
+    private void PrependPendingLocked(Track track)
+    {
+        var existing = _pending.ToList();
+        _pending.Clear();
+        _pending.Enqueue(track);
+
+        foreach (var pendingTrack in existing)
+            _pending.Enqueue(pendingTrack);
     }
 
     private TimeSpan ResolveElapsedLocked()

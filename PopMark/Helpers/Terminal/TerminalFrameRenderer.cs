@@ -263,7 +263,7 @@ internal static class TerminalFrameRenderer
         {
             return
             [
-                TerminalText.PadAnsiAware($"{TerminalStyles.AnsiMuted}SPACE{TerminalStyles.Reset} play/pause {TerminalStyles.AnsiChrome}|{TerminalStyles.Reset} {TerminalStyles.AnsiMuted}N{TerminalStyles.Reset} next {TerminalStyles.AnsiChrome}|{TerminalStyles.Reset} {TerminalStyles.AnsiMuted}P +/-30{TerminalStyles.Reset} seek {TerminalStyles.AnsiChrome}|{TerminalStyles.Reset} {TerminalStyles.AnsiMuted}clear playlist{TerminalStyles.Reset} {TerminalStyles.AnsiChrome}|{TerminalStyles.Reset} {TerminalStyles.AnsiMuted}M{TerminalStyles.Reset} mini {TerminalStyles.AnsiChrome}|{TerminalStyles.Reset} {TerminalStyles.AnsiMuted}Q{TerminalStyles.Reset} quit", width)
+                TerminalText.PadAnsiAware($"{TerminalStyles.AnsiMuted}SPACE{TerminalStyles.Reset} play/pause {TerminalStyles.AnsiChrome}|{TerminalStyles.Reset} {TerminalStyles.AnsiMuted}N/P{TerminalStyles.Reset} next/prev {TerminalStyles.AnsiChrome}|{TerminalStyles.Reset} {TerminalStyles.AnsiMuted}LEFT/RIGHT{TerminalStyles.Reset} seek {TerminalStyles.AnsiChrome}|{TerminalStyles.Reset} {TerminalStyles.AnsiMuted}clear playlist{TerminalStyles.Reset} {TerminalStyles.AnsiChrome}|{TerminalStyles.Reset} {TerminalStyles.AnsiMuted}M{TerminalStyles.Reset} mini {TerminalStyles.AnsiChrome}|{TerminalStyles.Reset} {TerminalStyles.AnsiMuted}Q{TerminalStyles.Reset} quit", width)
             ];
         }
 
@@ -271,8 +271,8 @@ internal static class TerminalFrameRenderer
             "Commands",
             [
                 $"{TerminalStyles.AnsiAccent}add <url>{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}load a YouTube video or playlist{TerminalStyles.Reset}",
-                $"{TerminalStyles.AnsiAccent}play/pause{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}toggle playback{TerminalStyles.Reset}   {TerminalStyles.AnsiAccent}next{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}skip track{TerminalStyles.Reset}",
-                $"{TerminalStyles.AnsiAccent}p <seconds>{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}relative seek, for example p 30 or p -30{TerminalStyles.Reset}",
+                $"{TerminalStyles.AnsiAccent}play/pause{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}toggle playback{TerminalStyles.Reset}   {TerminalStyles.AnsiAccent}next/prev{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}skip or return a track{TerminalStyles.Reset}",
+                $"{TerminalStyles.AnsiAccent}LEFT/RIGHT arrows{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}seek by 10s, repeated taps add another 10s{TerminalStyles.Reset}",
                 $"{TerminalStyles.AnsiAccent}clear playlist{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}stop playback and empty the queue{TerminalStyles.Reset}",
                 $"{TerminalStyles.AnsiAccent}mini{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}compact view{TerminalStyles.Reset}   {TerminalStyles.AnsiAccent}cls{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}redraw{TerminalStyles.Reset}   {TerminalStyles.AnsiAccent}q{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}quit{TerminalStyles.Reset}"
             ],

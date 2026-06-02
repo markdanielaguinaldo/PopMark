@@ -4,6 +4,12 @@ using Spectre.Console;
 
 internal static class Program
 {
+    private const int ArrowSeekBaseSeconds = 10;
+    private static readonly TimeSpan ArrowSeekRepeatWindow = TimeSpan.FromMilliseconds(900);
+    private static DateTimeOffset _lastArrowSeekAt = DateTimeOffset.MinValue;
+    private static int _lastArrowSeekDirection;
+    private static int _arrowSeekRepeatCount;
+
     private static async Task<int> Main(string[] args)
     {
         ConsoleHelper.InitializeTerminalCapabilities();
@@ -94,7 +100,8 @@ internal static class Program
                     continue;
                 }
 
-                history.Add(input);
+                if (!IsInternalCommand(input))
+                    history.Add(input);
                 var parsedArgs = ConsoleHelper.SplitArgs(input);
                 if (parsedArgs.Length == 0)
                     continue;
@@ -194,17 +201,15 @@ internal static class Program
                 await player.NextAsync();
                 return false;
 
-            case "p":
-            case "seek":
-            case "ff":
-            case "rewind":
-                if (!TryResolveSeekSeconds(args, out var seekSeconds))
-                {
-                    player.LastMessage = "Usage: p <seconds>, for example: p 30 or p -30.";
-                    return false;
-                }
+            case "previous":
+            case "prev":
+            case "back":
+                await player.PreviousAsync();
+                return false;
 
-                await player.SeekRelativeAsync(seekSeconds);
+            case "__seek-forward":
+            case "__seek-back":
+                await player.SeekRelativeAsync(ResolveArrowSeekSeconds(command));
                 return false;
 
             case "stop":
@@ -447,13 +452,26 @@ internal static class Program
         return firstSpace >= 0 ? rawInput[(firstSpace + 1)..].Trim() : null;
     }
 
-    private static bool TryResolveSeekSeconds(string[] args, out int seconds)
+    private static int ResolveArrowSeekSeconds(string command)
     {
-        seconds = 0;
-        return args.Length >= 2 &&
-               int.TryParse(args[1], out seconds) &&
-               seconds != 0;
+        var direction = command.Equals("__seek-forward", StringComparison.OrdinalIgnoreCase) ? 1 : -1;
+        var now = DateTimeOffset.UtcNow;
+        if (_lastArrowSeekDirection == direction && now - _lastArrowSeekAt <= ArrowSeekRepeatWindow)
+        {
+            _arrowSeekRepeatCount++;
+        }
+        else
+        {
+            _arrowSeekRepeatCount = 1;
+        }
+
+        _lastArrowSeekDirection = direction;
+        _lastArrowSeekAt = now;
+        return direction * ArrowSeekBaseSeconds * _arrowSeekRepeatCount;
     }
+
+    private static bool IsInternalCommand(string input) =>
+        input.StartsWith("__", StringComparison.Ordinal);
 
     private static bool IsLikelyUrl(string value) =>
         Uri.TryCreate(value.Trim(), UriKind.Absolute, out var uri) &&

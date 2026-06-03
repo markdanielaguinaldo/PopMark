@@ -50,6 +50,9 @@ public static class ConsoleHelper
             queueScrollOffsetProvider,
             controlsModeProvider);
 
+    public static T RunWithStandardInput<T>(Func<T> action) =>
+        TerminalHost.RunWithStandardInput(action);
+
     public static string[] SplitArgs(string commandLine) =>
         CommandLineParser.SplitArgs(commandLine);
 

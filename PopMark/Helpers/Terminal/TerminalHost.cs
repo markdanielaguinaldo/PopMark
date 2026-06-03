@@ -11,6 +11,7 @@ internal static class TerminalHost
     private const uint EnableVirtualTerminalProcessing = 0x0004;
     private const uint EnableVirtualTerminalInput = 0x0200;
     private static bool _usingAlternateScreen;
+    private static uint? _originalInputMode;
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern nint GetStdHandle(int nStdHandle);
@@ -46,12 +47,7 @@ internal static class TerminalHost
 
             _ = SetConsoleMode(outputHandle, mode | EnableVirtualTerminalProcessing);
 
-            var inputHandle = GetStdHandle(StdInputHandle);
-            if (inputHandle == 0 || inputHandle == -1)
-                return;
-
-            if (GetConsoleMode(inputHandle, out var inputMode))
-                _ = SetConsoleMode(inputHandle, inputMode | EnableVirtualTerminalInput);
+            RememberOriginalInputMode();
         }
         catch
         {
@@ -63,6 +59,7 @@ internal static class TerminalHost
         if (Console.IsOutputRedirected || _usingAlternateScreen)
             return;
 
+        EnableInteractiveInput();
         Console.Write("\u001b[?1049h\u001b[?1000h\u001b[?1006h\u001b[?25l\u001b[H\u001b[2J");
         _usingAlternateScreen = true;
         TerminalFrameRenderer.ResetFrameCache();
@@ -75,7 +72,31 @@ internal static class TerminalHost
 
         TerminalFrameRenderer.ResetFrameCache();
         Console.Write("\u001b[?1006l\u001b[?1000l\u001b[?25h\u001b[?1049l");
+        RestoreStandardInput();
         _usingAlternateScreen = false;
+    }
+
+    public static T RunWithStandardInput<T>(Func<T> action)
+    {
+        var restoreInteractiveInput = _usingAlternateScreen;
+        if (restoreInteractiveInput && !Console.IsOutputRedirected)
+            Console.Write("\u001b[?1006l\u001b[?1000l\u001b[?25h");
+
+        RestoreStandardInput();
+
+        try
+        {
+            return action();
+        }
+        finally
+        {
+            if (restoreInteractiveInput)
+            {
+                EnableInteractiveInput();
+                if (!Console.IsOutputRedirected)
+                    Console.Write("\u001b[?1000h\u001b[?1006h\u001b[?25l");
+            }
+        }
     }
 
     public static void UseBarCursor()
@@ -108,6 +129,7 @@ internal static class TerminalHost
         {
             if (!Console.IsOutputRedirected)
                 Console.Write("\u001b[?1006l\u001b[?1000l\u001b[?25h\u001b[0 q");
+            RestoreStandardInput();
         }
         catch
         {
@@ -156,5 +178,58 @@ internal static class TerminalHost
         {
             AnsiConsole.Clear();
         }
+    }
+
+    private static void EnableInteractiveInput()
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            return;
+
+        try
+        {
+            var inputHandle = GetStdHandle(StdInputHandle);
+            if (inputHandle == 0 || inputHandle == -1)
+                return;
+
+            if (!GetConsoleMode(inputHandle, out var inputMode))
+                return;
+
+            _originalInputMode ??= inputMode;
+            _ = SetConsoleMode(inputHandle, inputMode | EnableVirtualTerminalInput);
+        }
+        catch
+        {
+        }
+    }
+
+    private static void RestoreStandardInput()
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows) || _originalInputMode is null)
+            return;
+
+        try
+        {
+            var inputHandle = GetStdHandle(StdInputHandle);
+            if (inputHandle == 0 || inputHandle == -1)
+                return;
+
+            _ = SetConsoleMode(inputHandle, _originalInputMode.Value);
+        }
+        catch
+        {
+        }
+    }
+
+    private static void RememberOriginalInputMode()
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            return;
+
+        var inputHandle = GetStdHandle(StdInputHandle);
+        if (inputHandle == 0 || inputHandle == -1)
+            return;
+
+        if (GetConsoleMode(inputHandle, out var inputMode))
+            _originalInputMode ??= inputMode;
     }
 }

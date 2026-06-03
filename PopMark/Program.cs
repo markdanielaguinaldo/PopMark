@@ -231,11 +231,12 @@ internal static class Program
                 var url = ResolveUrlArgument(args, rawInput);
                 if (string.IsNullOrWhiteSpace(url))
                 {
-                    url = AnsiConsole.Prompt(
-                        new TextPrompt<string>("[bold deepskyblue1]YouTube URL[/]:")
-                            .Validate(value => IsLikelyUrl(value)
-                                ? ValidationResult.Success()
-                                : ValidationResult.Error("[cyan1]Enter a valid URL.[/]")));
+                    url = ConsoleHelper.RunWithStandardInput(() =>
+                        AnsiConsole.Prompt(
+                            new TextPrompt<string>("[bold deepskyblue1]YouTube URL[/]:")
+                                .Validate(value => IsLikelyUrl(value)
+                                    ? ValidationResult.Success()
+                                    : ValidationResult.Error("[cyan1]Enter a valid URL.[/]"))));
                 }
 
                 await AddUrlAsync(player, dependencies, url, promptToInstallDependencies: true, confirmInstallDependencies: true, showStatus: true);

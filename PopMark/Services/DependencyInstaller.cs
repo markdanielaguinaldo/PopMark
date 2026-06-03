@@ -1,6 +1,7 @@
 using SharpCompress.Archives;
 using SharpCompress.Common;
 using SharpCompress.Readers;
+using PopMark.Helpers;
 using Spectre.Console;
 using System.Diagnostics;
 using System.Text.Json;
@@ -32,8 +33,11 @@ public sealed class DependencyInstaller
         if (!promptToInstall)
             return $"Missing playback dependencies: {missingNames}. Start PopMark interactively to install them locally.";
 
-        if (confirmInstall && !AnsiConsole.Confirm($"[yellow]Install missing playback tool(s) locally: {Markup.Escape(missingNames)}?[/]"))
+        if (confirmInstall && !ConsoleHelper.RunWithStandardInput(() =>
+                AnsiConsole.Confirm($"[yellow]Install missing playback tool(s) locally: {Markup.Escape(missingNames)}?[/]")))
+        {
             return $"Missing playback dependencies: {missingNames}.";
+        }
 
         Directory.CreateDirectory(ToolLocator.ToolRoot);
 

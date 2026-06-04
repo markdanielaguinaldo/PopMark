@@ -184,8 +184,8 @@ internal static class Program
                         }
                         else if (player.ResolvePlaylistIndex(goToTarget) is { } targetIndex)
                         {
-                            await player.PlayAtQueueIndexAsync(targetIndex);
                             queueScrollOffset = targetIndex;
+                            player.LastMessage = $"Playlist moved to song {targetIndex + 1}.";
                         }
                         else
                         {

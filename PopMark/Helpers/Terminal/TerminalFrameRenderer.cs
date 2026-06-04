@@ -417,7 +417,7 @@ internal static class TerminalFrameRenderer
             [
                 $"{TerminalStyles.AnsiAccent}add <url>{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}load a YouTube video or playlist{TerminalStyles.Reset}",
                 $"{TerminalStyles.AnsiAccent}play/pause{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}toggle playback{TerminalStyles.Reset}   {TerminalStyles.AnsiAccent}next [count] / prev [count]{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}skip or return tracks{TerminalStyles.Reset}",
-                $"{TerminalStyles.AnsiAccent}goto <#|title>{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}play a playlist song directly{TerminalStyles.Reset}   {TerminalStyles.AnsiAccent}shuffle{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}randomize the playlist{TerminalStyles.Reset}",
+                $"{TerminalStyles.AnsiAccent}goto <#|title>{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}scroll to a playlist song{TerminalStyles.Reset}   {TerminalStyles.AnsiAccent}shuffle{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}randomize the playlist{TerminalStyles.Reset}",
                 $"{TerminalStyles.AnsiAccent}clear playlist{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}stop playback and empty the queue{TerminalStyles.Reset}",
                 $"{TerminalStyles.AnsiAccent}q/quit/exit{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}stop playback and exit{TerminalStyles.Reset}"
             ],

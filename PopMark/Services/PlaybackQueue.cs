@@ -334,6 +334,79 @@ public sealed class PlaybackQueue
         NotifySnapshotChanged();
     }
 
+    public int? ResolvePlaylistIndex(string target)
+    {
+        if (string.IsNullOrWhiteSpace(target))
+            return null;
+
+        lock (_syncRoot)
+        {
+            var playlist = BuildPlaylistLocked();
+            if (playlist.Count == 0)
+                return null;
+
+            if (int.TryParse(target.Trim(), out var displayIndex))
+            {
+                var trackIndex = displayIndex - 1;
+                return trackIndex >= 0 && trackIndex < playlist.Count ? trackIndex : null;
+            }
+
+            var normalizedTarget = target.Trim();
+            for (var i = 0; i < playlist.Count; i++)
+            {
+                if (playlist[i].Title.Contains(normalizedTarget, StringComparison.OrdinalIgnoreCase))
+                    return i;
+            }
+
+            for (var i = 0; i < playlist.Count; i++)
+            {
+                if (playlist[i].DisplaySource.Contains(normalizedTarget, StringComparison.OrdinalIgnoreCase))
+                    return i;
+            }
+        }
+
+        return null;
+    }
+
+    public void ShufflePlaylist()
+    {
+        lock (_syncRoot)
+        {
+            var playlist = BuildPlaylistLocked();
+            if (playlist.Count <= 1)
+            {
+                LastMessage = playlist.Count == 0
+                    ? "Playlist is empty."
+                    : "Playlist only has one track.";
+                return;
+            }
+
+            var current = _current;
+            var tracksToShuffle = current is null
+                ? playlist
+                : playlist.Where(track => !ReferenceEquals(track, current)).ToList();
+
+            if (tracksToShuffle.Count <= 1)
+            {
+                LastMessage = "No other tracks to shuffle.";
+                return;
+            }
+
+            Shuffle(tracksToShuffle);
+
+            _previous.Clear();
+            _pending.Clear();
+            foreach (var track in tracksToShuffle)
+                _pending.Enqueue(track);
+
+            LastMessage = current is null
+                ? $"Shuffled {tracksToShuffle.Count} track(s)."
+                : $"Shuffled {tracksToShuffle.Count} upcoming track(s).";
+        }
+
+        NotifySnapshotChanged();
+    }
+
     public async Task SeekRelativeAsync(int seconds, CancellationToken cancellationToken = default)
     {
         if (!HasCurrentTrack())
@@ -631,4 +704,13 @@ public sealed class PlaybackQueue
 
     private static int ClampVolume(int volumePercent) =>
         Math.Clamp(volumePercent, MinVolumePercent, MaxVolumePercent);
+
+    private static void Shuffle<T>(IList<T> values)
+    {
+        for (var i = values.Count - 1; i > 0; i--)
+        {
+            var j = Random.Shared.Next(i + 1);
+            (values[i], values[j]) = (values[j], values[i]);
+        }
+    }
 }

@@ -166,6 +166,37 @@ internal static class Program
                         continue;
                     }
 
+                    if (IsShuffleCommand(parsedArgs[0]))
+                    {
+                        player.ShufflePlaylist();
+                        var snapshot = player.CreateSnapshot();
+                        queueScrollOffset = snapshot.Current is null ? 0 : snapshot.Previous.Count;
+                        notice = player.LastMessage;
+                        (lastWidth, lastHeight) = ConsoleHelper.GetWindowSize();
+                        continue;
+                    }
+
+                    if (TryResolveGoToCommand(parsedArgs, out var goToTarget, out var goToMessage))
+                    {
+                        if (string.IsNullOrWhiteSpace(goToTarget))
+                        {
+                            player.LastMessage = goToMessage;
+                        }
+                        else if (player.ResolvePlaylistIndex(goToTarget) is { } targetIndex)
+                        {
+                            await player.PlayAtQueueIndexAsync(targetIndex);
+                            queueScrollOffset = targetIndex;
+                        }
+                        else
+                        {
+                            player.LastMessage = $"No playlist song matches: {goToTarget}";
+                        }
+
+                        notice = player.LastMessage;
+                        (lastWidth, lastHeight) = ConsoleHelper.GetWindowSize();
+                        continue;
+                    }
+
                     showHelp = parsedArgs[0].Equals("help", StringComparison.OrdinalIgnoreCase) ||
                                parsedArgs[0].Equals("h", StringComparison.OrdinalIgnoreCase) ||
                                parsedArgs[0].Equals("?", StringComparison.OrdinalIgnoreCase);
@@ -493,6 +524,35 @@ internal static class Program
         count = 1;
         message = $"Usage: {commandName} [count], where count is 1 or more.";
         return false;
+    }
+
+    private static bool IsShuffleCommand(string command) =>
+        command.Equals("shuffle", StringComparison.OrdinalIgnoreCase) ||
+        command.Equals("shuf", StringComparison.OrdinalIgnoreCase);
+
+    private static bool TryResolveGoToCommand(string[] args, out string target, out string message)
+    {
+        target = string.Empty;
+        message = "Usage: goto <playlist number or song title>.";
+        if (args.Length == 0)
+            return false;
+
+        var command = args[0].ToLowerInvariant();
+        var targetStartIndex = command switch
+        {
+            "goto" or "go-to" or "jump" or "song" => 1,
+            "go" when args.Length >= 2 && args[1].Equals("to", StringComparison.OrdinalIgnoreCase) => 2,
+            _ => -1
+        };
+
+        if (targetStartIndex < 0)
+            return false;
+
+        if (args.Length <= targetStartIndex)
+            return true;
+
+        target = string.Join(' ', args.Skip(targetStartIndex)).Trim();
+        return true;
     }
 
     private static int ResolveArrowSeekSeconds(string command)

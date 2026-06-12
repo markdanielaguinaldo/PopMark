@@ -2,6 +2,7 @@ using PopMark.Helpers;
 using PopMark.Models;
 using PopMark.Services;
 using Spectre.Console;
+using System.Reflection;
 
 internal static class Program
 {
@@ -15,6 +16,12 @@ internal static class Program
         {
             eventArgs.Cancel = true;
         };
+
+        if (IsVersionRequest(args))
+        {
+            Console.WriteLine(VersionDisplay());
+            return 0;
+        }
 
         var ytDlp = new YtDlpService();
         var mpv = new MpvPlayer();
@@ -254,6 +261,13 @@ internal static class Program
             case "controls":
             case "control":
                 player.LastMessage = "Controls are visible in the command center.";
+                return false;
+
+            case "version":
+            case "ver":
+            case "--version":
+            case "-v":
+                player.LastMessage = VersionDisplay();
                 return false;
 
             case "add":
@@ -497,6 +511,22 @@ internal static class Program
     private static string DeprecatedTrackNavigationMessage(string command) =>
         $"{command} is deprecated. Click a playlist song to play it directly, or use goto <#|title> to focus a song.";
 
+    private static bool IsVersionRequest(string[] args) =>
+        args.Length == 1 &&
+        (args[0].Equals("--version", StringComparison.OrdinalIgnoreCase) ||
+         args[0].Equals("-v", StringComparison.OrdinalIgnoreCase) ||
+         args[0].Equals("version", StringComparison.OrdinalIgnoreCase) ||
+         args[0].Equals("ver", StringComparison.OrdinalIgnoreCase));
+
+    private static string VersionDisplay() =>
+        $"PopMark {AppVersion()}";
+
+    private static string AppVersion() =>
+        typeof(Program).Assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
+            .InformationalVersion ??
+        typeof(Program).Assembly.GetName().Version?.ToString() ??
+        "unknown";
 
     private static bool IsShuffleCommand(string command) =>
         command.Equals("shuffle", StringComparison.OrdinalIgnoreCase) ||

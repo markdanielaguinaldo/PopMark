@@ -387,7 +387,7 @@ internal static class TerminalFrameRenderer
         {
             return
             [
-                TerminalText.PadAnsiAware($"{TerminalStyles.AnsiMuted}help{TerminalStyles.Reset} commands {TerminalStyles.AnsiChrome}|{TerminalStyles.Reset} {TerminalStyles.AnsiMuted}controls{TerminalStyles.Reset} shortcuts {TerminalStyles.AnsiChrome}|{TerminalStyles.Reset} {TerminalStyles.AnsiMuted}SPACE{TerminalStyles.Reset} play/pause {TerminalStyles.AnsiChrome}|{TerminalStyles.Reset} {TerminalStyles.AnsiMuted}[ / ]{TerminalStyles.Reset} prev/next", width)
+                TerminalText.PadAnsiAware($"{TerminalStyles.AnsiMuted}help{TerminalStyles.Reset} commands {TerminalStyles.AnsiChrome}|{TerminalStyles.Reset} {TerminalStyles.AnsiMuted}controls{TerminalStyles.Reset} shortcuts {TerminalStyles.AnsiChrome}|{TerminalStyles.Reset} {TerminalStyles.AnsiMuted}SPACE{TerminalStyles.Reset} play/pause {TerminalStyles.AnsiChrome}|{TerminalStyles.Reset} {TerminalStyles.AnsiMuted}click song{TerminalStyles.Reset} play", width)
             ];
         }
 
@@ -401,7 +401,6 @@ internal static class TerminalFrameRenderer
                     $"{TerminalStyles.AnsiAccent}Up / Down arrows{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}scroll playlist by one row{TerminalStyles.Reset}",
                     $"{TerminalStyles.AnsiAccent}PageUp / PageDown{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}scroll playlist faster{TerminalStyles.Reset}",
                     $"{TerminalStyles.AnsiAccent}Home / End{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}jump to top or bottom of playlist{TerminalStyles.Reset}",
-                    $"{TerminalStyles.AnsiAccent}[ / ]{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}previous or next track; repeat quickly to jump multiple tracks{TerminalStyles.Reset}",
                     $"{TerminalStyles.AnsiAccent}- / ={TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}decrease or increase volume by 10%{TerminalStyles.Reset}",
                     $"{TerminalStyles.AnsiAccent}Mouse wheel{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}scroll playlist when supported{TerminalStyles.Reset}",
                     $"{TerminalStyles.AnsiAccent}Click playlist song{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}play that song directly{TerminalStyles.Reset}",
@@ -416,7 +415,7 @@ internal static class TerminalFrameRenderer
             "Commands",
             [
                 $"{TerminalStyles.AnsiAccent}add <url>{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}load a YouTube video or playlist{TerminalStyles.Reset}",
-                $"{TerminalStyles.AnsiAccent}play/pause{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}toggle playback{TerminalStyles.Reset}   {TerminalStyles.AnsiAccent}next [count] / prev [count]{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}skip or return tracks{TerminalStyles.Reset}",
+                $"{TerminalStyles.AnsiAccent}play/pause{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}toggle playback{TerminalStyles.Reset}   {TerminalStyles.AnsiAccent}version{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}show the current app version{TerminalStyles.Reset}",
                 $"{TerminalStyles.AnsiAccent}goto <#|title>{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}scroll to a playlist song{TerminalStyles.Reset}   {TerminalStyles.AnsiAccent}shuffle{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}randomize the playlist{TerminalStyles.Reset}",
                 $"{TerminalStyles.AnsiAccent}clear playlist{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}stop playback and empty the queue{TerminalStyles.Reset}",
                 $"{TerminalStyles.AnsiAccent}q/quit/exit{TerminalStyles.Reset}  {TerminalStyles.AnsiMuted}stop playback and exit{TerminalStyles.Reset}"

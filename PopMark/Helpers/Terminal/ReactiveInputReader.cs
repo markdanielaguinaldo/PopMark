@@ -6,8 +6,6 @@ namespace PopMark.Helpers.Terminal;
 
 internal static class ReactiveInputReader
 {
-    private const int RepeatedShortcutCoalesceMilliseconds = 160;
-    private const int MaxRepeatedShortcutCount = 99;
     private static readonly Queue<ConsoleKeyInfo> PendingKeys = new();
 
     public static string Read(
@@ -123,12 +121,6 @@ internal static class ReactiveInputReader
                 if (IsSpaceKey(key))
                     return ReturnWithSize("play", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
 
-                if (key.KeyChar == ']')
-                    return ReturnWithSize(ResolveRepeatedBracketShortcut(']', "next"), ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
-
-                if (key.KeyChar == '[')
-                    return ReturnWithSize(ResolveRepeatedBracketShortcut('[', "previous"), ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
-
                 if (key.KeyChar == '-')
                     return ReturnWithSize("__volume-down", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
 
@@ -201,34 +193,6 @@ internal static class ReactiveInputReader
 
     private static void PushBackInputKey(ConsoleKeyInfo key) =>
         PendingKeys.Enqueue(key);
-
-    private static string ResolveRepeatedBracketShortcut(char shortcut, string command)
-    {
-        var count = 1;
-        var deadline = DateTimeOffset.UtcNow.AddMilliseconds(RepeatedShortcutCoalesceMilliseconds);
-        while (count < MaxRepeatedShortcutCount && DateTimeOffset.UtcNow <= deadline)
-        {
-            if (!HasInputKeyAvailable())
-            {
-                Thread.Sleep(8);
-                continue;
-            }
-
-            var next = ReadInputKey();
-            if (next.KeyChar != shortcut)
-            {
-                PushBackInputKey(next);
-                break;
-            }
-
-            count++;
-            deadline = DateTimeOffset.UtcNow.AddMilliseconds(RepeatedShortcutCoalesceMilliseconds);
-        }
-
-        return count == 1
-            ? command
-            : $"{command} {count}";
-    }
 
     private static bool TryResolveTerminalCommand(ConsoleKeyInfo key, bool shortcutsEnabled, out string command)
     {

@@ -283,26 +283,14 @@ internal static class Program
             case "skip":
             case "n":
             case "]":
-                if (!TryResolveTrackStepCount(args, "next", out var nextCount, out var nextCountMessage))
-                {
-                    player.LastMessage = nextCountMessage;
-                    return false;
-                }
-
-                await player.NextAsync(nextCount);
+                player.LastMessage = DeprecatedTrackNavigationMessage("next");
                 return false;
 
             case "previous":
             case "prev":
             case "back":
             case "[":
-                if (!TryResolveTrackStepCount(args, "prev", out var previousCount, out var previousCountMessage))
-                {
-                    player.LastMessage = previousCountMessage;
-                    return false;
-                }
-
-                await player.PreviousAsync(previousCount);
+                player.LastMessage = DeprecatedTrackNavigationMessage("previous");
                 return false;
 
             case "__seek-forward":
@@ -506,25 +494,9 @@ internal static class Program
         return firstSpace >= 0 ? rawInput[(firstSpace + 1)..].Trim() : null;
     }
 
-    private static bool TryResolveTrackStepCount(string[] args, string commandName, out int count, out string message)
-    {
-        count = 1;
-        message = string.Empty;
+    private static string DeprecatedTrackNavigationMessage(string command) =>
+        $"{command} is deprecated. Click a playlist song to play it directly, or use goto <#|title> to focus a song.";
 
-        if (args.Length == 1)
-            return true;
-
-        if (args.Length == 2 &&
-            int.TryParse(args[1], out count) &&
-            count > 0)
-        {
-            return true;
-        }
-
-        count = 1;
-        message = $"Usage: {commandName} [count], where count is 1 or more.";
-        return false;
-    }
 
     private static bool IsShuffleCommand(string command) =>
         command.Equals("shuffle", StringComparison.OrdinalIgnoreCase) ||

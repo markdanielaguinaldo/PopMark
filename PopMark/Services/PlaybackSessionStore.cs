@@ -40,7 +40,7 @@ public static class PlaybackSessionStore
             }
         }
 
-        SaveSessions([]);
+        SaveSessions(Array.Empty<PlaybackSession>());
         return cleaned + CleanupDiscoveredPopMarkMpvProcesses();
     }
 
@@ -73,14 +73,14 @@ public static class PlaybackSessionStore
         try
         {
             if (!File.Exists(SessionFilePath))
-                return [];
+                return new List<PlaybackSession>();
 
             var json = File.ReadAllText(SessionFilePath);
-            return JsonSerializer.Deserialize<List<PlaybackSession>>(json) ?? [];
+            return JsonSerializer.Deserialize<List<PlaybackSession>>(json) ?? new List<PlaybackSession>();
         }
         catch
         {
-            return [];
+            return new List<PlaybackSession>();
         }
     }
 

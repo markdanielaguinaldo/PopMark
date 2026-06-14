@@ -6,37 +6,101 @@ namespace PopMark.Helpers.Terminal;
 
 internal static class SplashScreen
 {
+    public static string CurrentVersion =>
+        typeof(SplashScreen).Assembly
+            .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), inherit: false)
+            .OfType<System.Reflection.AssemblyInformationalVersionAttribute>()
+            .FirstOrDefault()
+            ?.InformationalVersion ??
+        typeof(SplashScreen).Assembly.GetName().Version?.ToString() ??
+        "unknown";
+
     public static IRenderable Render(int frame, string version, int terminalWidth, int terminalHeight)
+        => Render(frame, version, terminalWidth, terminalHeight, snapshot: null);
+
+    public static IRenderable Render(int frame, string version, int terminalWidth, int terminalHeight, PlayerSnapshot? snapshot)
     {
         var width = Math.Max(1, terminalWidth > 0 ? terminalWidth : 80);
         var height = Math.Max(1, terminalHeight > 0 ? terminalHeight : 24);
-        var content = SplashCanvas.Render(frame, version, Math.Max(1, width - 2), Math.Max(1, height - 2));
+        if (width < 4 || height < 3)
+            return SplashCanvas.Render(frame, version, Math.Max(1, width), Math.Max(1, height), snapshot);
 
-        return new Panel(content)
+        var innerWidth = Math.Max(1, width - 4);
+        var innerHeight = Math.Max(1, height - 2);
+        var rows = new List<IRenderable>(height)
         {
-            Border = BoxBorder.Rounded,
-            BorderStyle = Style.Parse(TerminalStyles.Accent),
-            Padding = new Padding(0, 0),
-            Width = width,
-            Height = height
+            new Markup(BorderMarkup($"╭{new string('─', Math.Max(0, width - 2))}╮"))
         };
+
+        rows.AddRange(SplashCanvas.RenderRows(frame, version, innerWidth, innerHeight, snapshot)
+            .Take(innerHeight)
+            .Select(row => new Markup($"{BorderMarkup("│")} {row} {BorderMarkup("│")}")));
+
+        while (rows.Count < height - 1)
+            rows.Add(new Markup($"{BorderMarkup("│")} {new string(' ', innerWidth)} {BorderMarkup("│")}"));
+
+        rows.Add(new Markup(BorderMarkup($"╰{new string('─', Math.Max(0, width - 2))}╯")));
+        return new Rows(rows.ToArray());
     }
+
+    private static string BorderMarkup(string text) =>
+        $"[{TerminalStyles.Accent}]{Markup.Escape(text)}[/]";
 }
 
 internal static class SplashCanvas
 {
     private const string Dim = "grey23";
+    private const int ContentLeft = 3;
+    private const int VolumeSliderColumn = 3;
+    private const int VolumeSliderTrackOffset = 4;
+    private const int VolumeSliderTrackWidth = 13;
 
-    public static IRenderable Render(int frame, string version, int width, int height)
+    public static IRenderable Render(int frame, string version, int width, int height, PlayerSnapshot? snapshot = null)
+        => new Rows(RenderRows(frame, version, width, height, snapshot)
+            .Select(row => new Markup(row))
+            .ToArray());
+
+    public static IReadOnlyList<string> RenderRows(int frame, string version, int width, int height, PlayerSnapshot? snapshot = null)
     {
         var cells = CreateCells(width, height);
-        AddAmbientFrame(cells, frame, version);
-        AddHero(cells, frame, version);
+        AddAmbientFrame(cells, frame, version, snapshot);
+        AddHero(cells, frame, version, snapshot);
 
-        return new Rows(
-            Enumerable.Range(0, height)
-                .Select(row => new Markup(BuildMarkupRow(cells, row)))
-                .ToArray());
+        return Enumerable.Range(0, height)
+            .Select(row => BuildMarkupRow(cells, row))
+            .ToArray();
+    }
+
+    public static SplashHitboxes ResolveHitboxes(int terminalWidth, int splashHeight, PlayerSnapshot snapshot)
+    {
+        if (terminalWidth < 4 || splashHeight < 3)
+            return new SplashHitboxes(null, null);
+
+        var width = Math.Max(1, terminalWidth - 4);
+        var height = Math.Max(1, splashHeight - 2);
+        var layout = ResolveHeroLayout(frame: 0, width, height, playbackMode: true, snapshot);
+        var progressLine = layout.Art
+            .Select((line, row) => new { Line = line, Row = row })
+            .FirstOrDefault(candidate => AudioBeaconLogo.TryResolveProgressRange(candidate.Line, out _, out _));
+        SplashHitbox? progress = null;
+
+        if (progressLine is not null &&
+            AudioBeaconLogo.TryResolveProgressRange(progressLine.Line, out var start, out var progressWidth))
+        {
+            progress = new SplashHitbox(
+                X: ContentLeft + layout.Column + start,
+                Y: 2 + layout.Top + progressLine.Row,
+                Width: progressWidth);
+        }
+
+        var volume = height >= 18
+            ? new SplashHitbox(
+                X: ContentLeft + VolumeSliderColumn + VolumeSliderTrackOffset,
+                Y: 2 + height - 2,
+                Width: VolumeSliderTrackWidth)
+            : null;
+
+        return new SplashHitboxes(progress, volume);
     }
 
     private static SplashCell[,] CreateCells(int width, int height)
@@ -51,21 +115,20 @@ internal static class SplashCanvas
         return cells;
     }
 
-    private static void AddAmbientFrame(SplashCell[,] cells, int frame, string version)
+    private static void AddAmbientFrame(SplashCell[,] cells, int frame, string version, PlayerSnapshot? snapshot)
     {
         var height = cells.GetLength(0);
         var width = cells.GetLength(1);
         var pulse = frame % 4 < 2 ? "grey35" : TerminalStyles.Secondary;
 
-        Write(cells, 1, 3, MicroSignal(frame), TerminalStyles.Accent);
         WriteRight(cells, 1, 3, $"v{version}", "grey70");
-        WriteRight(cells, 2, 3, $"YT Music {SignalTrace(frame, 10)}", TerminalStyles.Secondary);
+        WriteRight(cells, 2, 3, "YT Music", TerminalStyles.Secondary);
 
         if (height >= 18)
         {
-            Write(cells, height - 3, 3, PlaybackHint(frame), "grey70");
-            Write(cells, height - 2, 3, TransportTrail(frame), TerminalStyles.Secondary);
+            AddVolumeSlider(cells, height - 2, VolumeSliderColumn, snapshot);
             AddBottomRightDots(cells, frame);
+            AddControlLegend(cells, height - 2);
         }
 
         AddMiddleDecorations(cells, frame);
@@ -79,47 +142,35 @@ internal static class SplashCanvas
         if (width < 56 || height < 16)
             return;
 
-        AddLeftTower(cells, frame, Math.Max(4, height / 2 - 4), 4);
-        AddRightPulse(cells, frame, Math.Max(4, height / 2 - 2), Math.Max(0, width - 13));
+        AddRightOwl(cells, Math.Max(4, height / 2 - 2), Math.Max(0, width - 12));
     }
 
-    private static void AddLeftTower(SplashCell[,] cells, int frame, int startRow, int column)
+    private static void AddRightOwl(SplashCell[,] cells, int startRow, int column)
     {
-        int[][] frames =
-        [
-            [2, 4, 3, 5, 2],
-            [3, 4, 3, 4, 2],
-            [3, 5, 4, 4, 3],
-            [2, 4, 4, 5, 3]
-        ];
-
-        var levels = frames[frame % frames.Length];
-        var towerHeight = 6;
-        for (var row = 0; row < towerHeight; row++)
+        const string eyes = "o,o";
+        var art = new[]
         {
-            var line = new char[levels.Length];
-            for (var bar = 0; bar < levels.Length; bar++)
-            {
-                line[bar] = towerHeight - row <= levels[bar] ? '▌' : '·';
-            }
-
-            Write(cells, startRow + row, column, new string(line), row >= 2 ? TerminalStyles.Accent : TerminalStyles.Secondary);
-        }
-    }
-
-    private static void AddRightPulse(SplashCell[,] cells, int frame, int startRow, int column)
-    {
-        var art = (frame % 4) switch
-        {
-            0 => new[] { "  .-.  ", " ( o ) ", "  '-'  " },
-            1 => new[] { " .---. ", "(  o  )", " '---' " },
-            2 => new[] { " .---. ", "(  O  )", " '---' " },
-            _ => new[] { "  .-.  ", " ( o ) ", "  '-'  " }
+            " ^...^ ",
+            $"/ {eyes} \\",
+            "|):::(|",
+            "--w-w--"
         };
 
         for (var row = 0; row < art.Length; row++)
-            Write(cells, startRow + row, column, art[row], row == 1 && frame == 2 ? TerminalStyles.Accent : "grey70");
+        {
+            for (var index = 0; index < art[row].Length; index++)
+                Put(cells, startRow + row, column + index, art[row][index], SplashOwlStyle(row, art[row][index]));
+        }
     }
+
+    private static string SplashOwlStyle(int row, char character) =>
+        row switch
+        {
+            1 when character is 'o' or '-' or ',' => "white",
+            2 when character is ')' or '(' or ':' => TerminalStyles.Secondary,
+            3 when character is 'w' or '-' => TerminalStyles.Secondary,
+            _ => "grey70"
+        };
 
     private static void AddBottomRightDots(SplashCell[,] cells, int frame)
     {
@@ -148,12 +199,12 @@ internal static class SplashCanvas
 
         var particles = new (int X, int Y, char[] Marks)[]
         {
-            (20, 25, ['.', '·', ' ']),
-            (78, 24, ['*', '.', ' ']),
-            (13, 60, ['·', ' ', '.']),
-            (84, 64, ['.', '*', ' ']),
-            (32, 77, ['·', '.', ' ']),
-            (68, 78, ['*', ' ', '.'])
+            (20, 25, new[] { '.', '·', ' ' }),
+            (78, 24, new[] { '*', '.', ' ' }),
+            (13, 60, new[] { '·', ' ', '.' }),
+            (84, 64, new[] { '.', '*', ' ' }),
+            (32, 77, new[] { '·', '.', ' ' }),
+            (68, 78, new[] { '*', ' ', '.' })
         };
 
         foreach (var (x, y, marks) in particles)
@@ -166,32 +217,86 @@ internal static class SplashCanvas
         }
     }
 
-    private static void AddHero(SplashCell[,] cells, int frame, string version)
+    private static void AddHero(SplashCell[,] cells, int frame, string version, PlayerSnapshot? snapshot)
     {
         var height = cells.GetLength(0);
         var width = cells.GetLength(1);
-        var art = AudioBeaconLogo.Lines(frame, width);
-        var artWidth = art.Max(line => line.Length);
+        var playbackMode = snapshot is not null;
+        var layout = ResolveHeroLayout(frame, width, height, playbackMode, snapshot);
+        var art = layout.Art;
         var compact = height < 18;
-        var groupHeight = art.Count + (compact ? 2 : 4);
-        var top = Math.Max(1, (height - groupHeight) / 2);
-        var column = Math.Max(0, (width - artWidth) / 2);
 
-        for (var index = 0; index < art.Count && top + index < height; index++)
+        for (var index = 0; index < art.Count && layout.Top + index < height; index++)
         {
-            var line = art[index].PadRight(artWidth);
-            WriteTape(cells, top + index, column, line, frame, index);
+            var line = art[index].PadRight(layout.ArtWidth);
+            WriteTape(cells, layout.Top + index, layout.Column, line, frame, index);
         }
 
-        var titleRow = Math.Min(height - 1, top + art.Count + 1);
+        var titleRow = Math.Min(height - 1, layout.Top + art.Count + 1);
         var subtitleRow = Math.Min(height - 1, titleRow + 1);
         var readyRow = Math.Min(height - 1, subtitleRow + (compact ? 1 : 2));
         var pulse = frame % 4 < 2 ? "white" : TerminalStyles.Accent;
 
         WriteCentered(cells, titleRow, "PopMark", TerminalStyles.Accent);
+        if (playbackMode)
+        {
+            var track = snapshot!.Current ?? snapshot.Pending.FirstOrDefault();
+            var trackText = TerminalText.TrimForWidget(track?.Title ?? "Queue is empty", Math.Max(12, width - 8));
+            var waveWidth = Math.Clamp(width - 12, 12, 54);
+            var wave = SplashWave(snapshot.Status, frame, waveWidth);
+            var detail = PlaybackDetail(snapshot, track);
+
+            WriteCentered(cells, subtitleRow, trackText, "white");
+            WriteCentered(cells, Math.Min(height - 1, subtitleRow + 1), wave, TerminalStyles.Accent);
+            WriteCentered(cells, Math.Min(height - 1, subtitleRow + 2), detail, "grey70");
+            return;
+        }
+
         if (!compact)
             WriteCentered(cells, subtitleRow, $"Terminal Music Player v{version}", "grey70");
         WriteCentered(cells, readyRow, "Ready • Press any key", pulse);
+    }
+
+    private static SplashHeroLayout ResolveHeroLayout(int frame, int width, int height, bool playbackMode, PlayerSnapshot? snapshot)
+    {
+        var art = AudioBeaconLogo.Lines(frame, playbackMode ? snapshot : null, width);
+        var artWidth = art.Max(line => line.Length);
+        var compact = height < 18;
+        var groupHeight = art.Count + (playbackMode ? 5 : compact ? 2 : 4);
+        var top = Math.Max(1, (height - groupHeight) / 2);
+        var column = Math.Max(0, (width - artWidth) / 2);
+        return new SplashHeroLayout(art, artWidth, top, column);
+    }
+
+    private static string SplashWave(PlaybackStatus status, int frame, int width)
+    {
+        string[] glyphs = new[] { "⣀", "⣄", "⣆", "⣇", "⣧", "⣷", "⣿" };
+        if (status is not (PlaybackStatus.Playing or PlaybackStatus.Loading))
+            return new string('⣀', width);
+
+        return string.Concat(Enumerable.Range(0, width).Select(index =>
+        {
+            var phase = (frame + index * 2) % 14;
+            var level = phase <= 7 ? phase - 1 : 13 - phase;
+            return glyphs[Math.Clamp(level, 0, glyphs.Length - 1)];
+        }));
+    }
+
+    private static string PlaybackDetail(PlayerSnapshot snapshot, Track? track)
+    {
+        var time = $"{FormatDuration(snapshot.Elapsed)} / {FormatDuration(track?.Duration)}";
+        var status = snapshot.Status is PlaybackStatus.Playing ? "Playing" : snapshot.Status.ToString();
+        return $"{status} • {time} • Tab playlist";
+    }
+
+    private static string FormatDuration(TimeSpan? duration)
+    {
+        if (duration is null)
+            return "--:--";
+
+        return duration.Value.TotalHours >= 1
+            ? duration.Value.ToString(@"h\:mm\:ss")
+            : duration.Value.ToString(@"m\:ss");
     }
 
     private static void WriteTape(SplashCell[,] cells, int row, int column, string text, int frame, int tapeRow)
@@ -204,34 +309,96 @@ internal static class SplashCanvas
         }
     }
 
-    private static string MicroSignal(int frame)
+    private static void AddControlLegend(SplashCell[,] cells, int row)
     {
-        string[] frames =
-        [
-            "⣀⣄⣤⣶⣤⣄⣀⣄⣀",
-            "⣀⣄⣶⣿⣶⣄⣀⣄⣀",
-            "⣀⣄⣤⣶⣤⣄⣀⣄⣀"
-        ];
+        var width = cells.GetLength(1);
+        var volumeEndColumn = VolumeSliderColumn + "VOL ".Length + VolumeSliderTrackWidth + 1 + 4;
+        var minimumColumn = Math.Min(width, volumeEndColumn + 3);
+        string[] variants =
+        {
+            "SPACE Play/Pause   [ Prev   ] Next   TAB Playlist   Q Quit",
+            "SPACE Play   [ Prev   ] Next   TAB View   Q Quit",
+            "SPACE Play   TAB View   Q Quit"
+        };
 
-        return frames[(frame / 3) % frames.Length];
+        var controls = variants.FirstOrDefault(candidate =>
+        {
+            var length = TerminalText.VisibleLength(candidate);
+            return length <= width &&
+                   Math.Max(0, (width - length) / 2) >= minimumColumn;
+        }) ?? variants.Last();
+
+        var column = Math.Max(minimumColumn, (width - TerminalText.VisibleLength(controls)) / 2);
+        if (column + TerminalText.VisibleLength(controls) > width)
+            column = Math.Max(0, width - TerminalText.VisibleLength(controls));
+
+        WriteControlLegend(cells, row, column, controls);
     }
 
-    private static string SignalTrace(int frame, int width)
+    private static void WriteControlLegend(SplashCell[,] cells, int row, int column, string controls)
     {
-        const string source = "▁▂▃▅▇▅▃▂";
-        return string.Concat(Enumerable.Range(0, width).Select(index => source[(frame + index * 2) % source.Length]));
+        for (var index = 0; index < controls.Length; index++)
+        {
+            var style = ControlLegendStyle(controls, index);
+            Put(cells, row, column + index, controls[index], style);
+        }
     }
 
-    private static string PlaybackHint(int frame) =>
-        frame % 8 < 4
-            ? "▶ SPACE   ▌▌ P/P   ■ Q"
-            : "▷ SPACE   ▌▌ P/P   ■ Q";
-
-    private static string TransportTrail(int frame)
+    private static string ControlLegendStyle(string controls, int index)
     {
-        const string source = "───●──────";
-        var offset = frame % source.Length;
-        return source[offset..] + source[..offset];
+        if (char.IsWhiteSpace(controls[index]))
+            return Dim;
+
+        if (TokenCoversIndex(controls, index, "SPACE") ||
+            TokenCoversIndex(controls, index, "TAB") ||
+            TokenCoversIndex(controls, index, "Q"))
+        {
+            return TerminalStyles.Accent;
+        }
+
+        if (controls[index] is '[' or ']')
+            return TerminalStyles.Secondary;
+
+        return "white";
+    }
+
+    private static bool TokenCoversIndex(string text, int index, string token)
+    {
+        var firstPossibleStart = Math.Max(0, index - token.Length + 1);
+        var lastPossibleStart = Math.Min(index, text.Length - token.Length);
+
+        for (var start = firstPossibleStart; start <= lastPossibleStart; start++)
+        {
+            var startsAtTokenBoundary = start == 0 || char.IsWhiteSpace(text[start - 1]);
+            var endsAtTokenBoundary = start + token.Length == text.Length || char.IsWhiteSpace(text[start + token.Length]);
+            if (startsAtTokenBoundary &&
+                endsAtTokenBoundary &&
+                text.AsSpan(start, token.Length).SequenceEqual(token))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static void AddVolumeSlider(SplashCell[,] cells, int row, int column, PlayerSnapshot? snapshot)
+    {
+        var volume = Math.Clamp(snapshot?.VolumePercent ?? 100, 0, 200);
+        const int trackWidth = VolumeSliderTrackWidth;
+        var knobPosition = Math.Clamp((int)Math.Round(Math.Min(volume, 100) / 100d * (trackWidth - 1)), 0, trackWidth - 1);
+        var activeStyle = volume > 100 ? TerminalStyles.Boost : TerminalStyles.Secondary;
+        const string label = "VOL ";
+        Write(cells, row, column, label, "grey70");
+
+        for (var index = 0; index < trackWidth; index++)
+        {
+            var character = index == knobPosition ? '●' : '━';
+            var style = index <= knobPosition ? activeStyle : "grey35";
+            Put(cells, row, column + label.Length + index, character, style);
+        }
+
+        Write(cells, row, column + label.Length + trackWidth + 1, $"{volume}%", activeStyle);
     }
 
     private static void WriteCentered(SplashCell[,] cells, int row, string text, string style) =>
@@ -293,7 +460,13 @@ internal static class SplashCanvas
     }
 
     private sealed record SplashCell(char Character, string Style);
+
+    private sealed record SplashHeroLayout(IReadOnlyList<string> Art, int ArtWidth, int Top, int Column);
 }
+
+internal sealed record SplashHitboxes(SplashHitbox? Progress, SplashHitbox? Volume);
+
+internal sealed record SplashHitbox(int X, int Y, int Width);
 
 internal static class AppLayout
 {
@@ -301,6 +474,9 @@ internal static class AppLayout
     {
         if (context.MiniMode)
             return MiniPlayerPanel.Render(context);
+
+        if (context.SplashMode)
+            return SplashScreen.Render(context.AnimationFrame, SplashScreen.CurrentVersion, context.Width, context.Height, context.Snapshot);
 
         var height = Math.Max(18, context.Height);
         var width = LayoutMetrics.ContentWidth(context.Width);
@@ -503,13 +679,13 @@ internal static class NowPlayingPanel
                 "[grey70]          / [/][#00d4ff]o,o[/][grey70] \\[/]")
         };
 
-        return
-        [
+        return new[]
+        {
             Owl(headPlain, headMarkup),
             Owl(facePlain, faceMarkup),
             Owl(BodyPlain(), BodyMarkup()),
             Owl(FeetPlain(), FeetMarkup())
-        ];
+        };
     }
 
     private static string BodyPlain() =>
@@ -576,7 +752,7 @@ internal static class QueuePanel
         var maxOffset = Math.Max(0, rows.Count - visibleRows);
         var offset = Math.Clamp(scrollOffset, 0, maxOffset);
         var rowsToShow = rows.Count == 0
-            ? [QueueRow.Message("Queue is empty")]
+            ? new List<QueueRow> { QueueRow.Message("Queue is empty") }
             : rows.Skip(offset).Take(visibleRows).ToList();
         var hiddenAfter = rows.Count == 0 ? 0 : Math.Max(0, rows.Count - offset - rowsToShow.Count);
         if (hiddenAfter > 0 && rowsToShow.Count > 0)
@@ -799,7 +975,7 @@ internal static class PlaybackPanel
 
     private static string BrailleWave(PlaybackStatus status, int frame, int width)
     {
-        string[] glyphs = ["⣀", "⣄", "⣆", "⣇", "⣧", "⣷", "⣿"];
+        string[] glyphs = new[] { "⣀", "⣄", "⣆", "⣇", "⣧", "⣷", "⣿" };
         if (status is not (PlaybackStatus.Playing or PlaybackStatus.Loading))
             return new string('⣀', width);
 
@@ -845,17 +1021,17 @@ internal static class HelpLine
         string text;
         if (showControls)
         {
-            text = "SPACE play/pause | Left/Right seek | Up/Down scroll queue | click song play";
+            text = "TAB splash/playlist | SPACE play/pause | [/] prev/next | Left/Right seek";
             return new Markup(StyledHelp(text, width, true));
         }
 
         if (showHelp)
         {
-            text = "add <url/search> | goto <#|title> focus | shuffle randomize | q quit";
+            text = "add <url/search> | splash/playlist views | goto <#|title> | shuffle | q quit";
             return new Markup(StyledHelp(text, width, false));
         }
 
-        text = "SPACE play/pause | Up/Down queue | ENTER/click play | help commands | q quit";
+        text = "TAB splash/playlist | SPACE play/pause | [/] prev/next | help commands | q quit";
         return new Markup(StyledHelp(text, width, true));
     }
 
@@ -927,7 +1103,7 @@ internal static class MiniPlayerPanel
 internal static class AudioBeaconLogo
 {
     private static readonly string[] LargeTapeDeck =
-    [
+    {
         "         _____________ _I-I__ __",
         "        /       ____  \"-|_|-.\\  \\",
         "       /  __,--'    `--._ _  \\\\  \\",
@@ -938,10 +1114,10 @@ internal static class AudioBeaconLogo
         "  / /___/ === `\"\"\"\"\"\"'    II  `w      \\",
         " /_____________________________________\\",
         "|_______________________________________|"
-    ];
+    };
 
     private static readonly string[] CompactTapeDeck =
-    [
+    {
         "      __________ _I-I_",
         "     /     ___  \"|_|.\\",
         "    / __,-'   `-._ \\\\",
@@ -951,28 +1127,40 @@ internal static class AudioBeaconLogo
         " /___ === `\"\"\"\"'  II `w \\",
         "/________________________\\",
         "|________________________|"
-    ];
+    };
 
     private static readonly string[] NarrowTapeDeck =
-    [
+    {
         "   _________",
         "  /  _I-I_  \\",
         " /  ( ^ )  \\",
         "|  === II  |",
         "|___________|"
-    ];
+    };
 
-    public static IReadOnlyList<string> Lines(int frame, int availableWidth)
+    public static IReadOnlyList<string> Lines(int frame, PlayerSnapshot? snapshot, int availableWidth)
     {
-        var large = AnimateReel(NormalizeArt(LargeTapeDeck), frame);
+        var large = BuildArt(NormalizeArt(LargeTapeDeck), frame, snapshot);
         if (availableWidth >= large[0].Length)
             return large;
 
-        var compact = AnimateReel(NormalizeArt(CompactTapeDeck), frame);
+        var compact = BuildArt(NormalizeArt(CompactTapeDeck), frame, snapshot);
         if (availableWidth >= compact[0].Length)
             return compact;
 
-        return AnimateReel(NormalizeArt(NarrowTapeDeck), frame);
+        return BuildArt(NormalizeArt(NarrowTapeDeck), frame, snapshot);
+    }
+
+    public static bool TryResolveProgressRange(string line, out int start, out int width)
+    {
+        start = 0;
+        width = 0;
+        if (!line.StartsWith('|') || line.LastIndexOf('|') <= 0)
+            return false;
+
+        start = 1;
+        width = line.LastIndexOf('|') - start;
+        return width > 0;
     }
 
     public static string StyleFor(int frame, int row, int column, char character, string line) =>
@@ -990,6 +1178,16 @@ internal static class AudioBeaconLogo
     {
         if (character is '◐' or '◓' or '◑' or '◒')
             return "white";
+
+        if (line.StartsWith('|') &&
+            line.LastIndexOf('|') > 0 &&
+            character is '=' or '◉')
+            return TerminalStyles.Accent;
+
+        if (line.StartsWith('|') &&
+            line.LastIndexOf('|') > 0 &&
+            character == '-')
+            return "grey35";
 
         if (character is '=' or 'I' or '|')
             return frame % 2 == 0 ? TerminalStyles.Accent : TerminalStyles.Secondary;
@@ -1026,6 +1224,14 @@ internal static class AudioBeaconLogo
         return column >= scanStart && column <= scanEnd;
     }
 
+    private static string[] BuildArt(IReadOnlyList<string> art, int frame, PlayerSnapshot? snapshot)
+    {
+        var animated = AnimateReel(art, frame);
+        return snapshot is null
+            ? animated
+            : ApplyProgress(animated, snapshot);
+    }
+
     private static string[] AnimateReel(IReadOnlyList<string> art, int frame)
     {
         var reel = (frame % 4) switch
@@ -1037,6 +1243,41 @@ internal static class AudioBeaconLogo
         };
 
         return art.Select(line => line.Replace('^', reel)).ToArray();
+    }
+
+    private static string[] ApplyProgress(IReadOnlyList<string> art, PlayerSnapshot snapshot)
+    {
+        var hasProgress = snapshot.Status is PlaybackStatus.Playing or PlaybackStatus.Paused or PlaybackStatus.Loading &&
+                          snapshot.Current?.Duration is { TotalSeconds: > 0 } &&
+                          snapshot.Elapsed is not null;
+        var ratio = hasProgress ? ProgressRatio(snapshot) : 0;
+        return art.Select(line =>
+        {
+            if (!TryResolveProgressRange(line, out var start, out var width))
+                return line;
+
+            var markerPosition = Math.Clamp((int)Math.Round(ratio * Math.Max(0, width - 1)), 0, Math.Max(0, width - 1));
+            var filled = Math.Clamp((int)Math.Round(ratio * width), 0, width);
+            var chars = line.ToCharArray();
+            for (var index = 0; index < width; index++)
+                chars[start + index] = index < filled ? '=' : '-';
+
+            if (hasProgress && width > 0)
+                chars[start + markerPosition] = '◉';
+
+            return new string(chars);
+        }).ToArray();
+    }
+
+    private static double ProgressRatio(PlayerSnapshot snapshot)
+    {
+        if (snapshot.Current?.Duration is not { TotalSeconds: > 0 } duration ||
+            snapshot.Elapsed is not { } elapsed)
+        {
+            return 0;
+        }
+
+        return Math.Clamp(elapsed.TotalSeconds / duration.TotalSeconds, 0, 1);
     }
 
     private static string[] NormalizeArt(IReadOnlyList<string> art)

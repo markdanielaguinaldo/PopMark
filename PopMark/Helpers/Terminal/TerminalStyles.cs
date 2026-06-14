@@ -17,5 +17,5 @@ internal static class TerminalStyles
     public const string AnsiWhite = "\u001b[38;2;245;245;245m";
     public const string AnsiDirtyWhite = "\u001b[38;2;218;216;204m";
 
-    public static readonly string[] VisualizerBars = ["▁", "▂", "▃", "▄", "▅", "▆", "▇"];
+    public static readonly string[] VisualizerBars = { "▁", "▂", "▃", "▄", "▅", "▆", "▇" };
 }

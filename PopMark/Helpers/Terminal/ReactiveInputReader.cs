@@ -17,7 +17,8 @@ internal static class ReactiveInputReader
         Func<bool>? miniModeProvider = null,
         Func<bool>? helpModeProvider = null,
         Func<int>? queueScrollOffsetProvider = null,
-        Func<bool>? controlsModeProvider = null)
+        Func<bool>? controlsModeProvider = null,
+        Func<bool>? splashModeProvider = null)
     {
         if (snapshotProvider is null || noticeProvider is null)
         {
@@ -53,7 +54,8 @@ internal static class ReactiveInputReader
                 controlsModeProvider?.Invoke() == true,
                 miniModeProvider?.Invoke() == true,
                 animationFrame,
-                queueScrollOffsetProvider?.Invoke() ?? 0);
+                queueScrollOffsetProvider?.Invoke() ?? 0,
+                splashModeProvider?.Invoke() == true);
             TerminalFrameRenderer.Render(context, forceFullPaint, renderInput);
             lastMainRefresh = DateTimeOffset.UtcNow;
             lastStateCheck = lastMainRefresh;
@@ -64,11 +66,15 @@ internal static class ReactiveInputReader
                 helpModeProvider,
                 controlsModeProvider,
                 queueScrollOffsetProvider,
+                splashModeProvider,
                 includeElapsed: true) ?? string.Empty;
         }
 
         void RefreshInput()
         {
+            if (splashModeProvider?.Invoke() == true)
+                return;
+
             var (width, height) = TerminalHost.GetWindowSize();
             trackedWidth = width;
             trackedHeight = height;
@@ -104,6 +110,7 @@ internal static class ReactiveInputReader
                         helpModeProvider,
                         controlsModeProvider,
                         queueScrollOffsetProvider,
+                        splashModeProvider,
                         includeElapsed: true) ?? string.Empty;
                     stateChanged = !string.Equals(screenSignature, lastScreenSignature, StringComparison.Ordinal);
                 }
@@ -130,6 +137,9 @@ internal static class ReactiveInputReader
             if (IsClearScreenKey(key))
                 return ReturnWithSize("cls", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
 
+            if (IsTabKey(key))
+                return ReturnWithSize("__toggle-view", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
+
             if (buffer.Length == 0)
             {
                 if (IsSpaceKey(key))
@@ -140,6 +150,12 @@ internal static class ReactiveInputReader
 
                 if (key.KeyChar == '=')
                     return ReturnWithSize("__volume-up", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
+
+                if (key.KeyChar == '[')
+                    return ReturnWithSize("__previous-track", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
+
+                if (key.KeyChar == ']')
+                    return ReturnWithSize("__next-track", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
 
                 switch (key.Key)
                 {
@@ -298,6 +314,8 @@ internal static class ReactiveInputReader
             "\u001b[B" => "__queue-down",
             "\u001b[C" => "__seek-forward",
             "\u001b[D" => "__seek-back",
+            "\u001b[1;2C" => "__seek-forward",
+            "\u001b[1;2D" => "__seek-back",
             "\u001b[5~" => "__queue-page-up",
             "\u001b[6~" => "__queue-page-down",
             "\u001b[H" or "\u001b[1~" or "\u001bOH" => "__queue-home",
@@ -384,6 +402,10 @@ internal static class ReactiveInputReader
         key.Key == ConsoleKey.Spacebar ||
         key.KeyChar == ' ';
 
+    private static bool IsTabKey(ConsoleKeyInfo key) =>
+        key.Key == ConsoleKey.Tab ||
+        key.KeyChar == '\t';
+
     private static string? BuildScreenSignature(
         Func<PlayerSnapshot>? snapshotProvider,
         Func<string>? noticeProvider,
@@ -391,6 +413,7 @@ internal static class ReactiveInputReader
         Func<bool>? helpModeProvider,
         Func<bool>? controlsModeProvider,
         Func<int>? queueScrollOffsetProvider,
+        Func<bool>? splashModeProvider,
         bool includeElapsed)
     {
         if (snapshotProvider is null || noticeProvider is null)
@@ -399,6 +422,8 @@ internal static class ReactiveInputReader
         var snapshot = snapshotProvider();
         var builder = new StringBuilder()
             .Append(miniModeProvider?.Invoke() == true ? "mini" : "full")
+            .Append('|')
+            .Append(splashModeProvider?.Invoke() == true ? "splash" : "playlist")
             .Append('|')
             .Append(helpModeProvider?.Invoke() == true ? "help" : "normal")
             .Append('|')

@@ -12,9 +12,10 @@ internal static class TerminalFrameRenderer
     private static int _lastRenderedHeight;
     private static int _lastRenderedTerminalHeight;
     private static ProgressHitbox? _lastProgressHitbox;
-    private static IReadOnlyList<PlaylistHitbox> _lastPlaylistHitboxes = [];
+    private static ProgressHitbox? _lastVolumeHitbox;
+    private static IReadOnlyList<PlaylistHitbox> _lastPlaylistHitboxes = Array.Empty<PlaylistHitbox>();
 
-    public static void DrawCommandCenter(PlayerSnapshot snapshot, string notice, bool showHelp = false, int queueScrollOffset = 0, bool showControls = false)
+    public static void DrawCommandCenter(PlayerSnapshot snapshot, string notice, bool showHelp = false, int queueScrollOffset = 0, bool showControls = false, bool showSplash = false)
     {
         var (width, height) = TerminalHost.GetWindowSize();
         Render(new RenderContext(
@@ -27,7 +28,8 @@ internal static class TerminalFrameRenderer
             ShowControls: showControls,
             MiniMode: false,
             AnimationFrame: 0,
-            QueueScrollOffset: queueScrollOffset));
+            QueueScrollOffset: queueScrollOffset,
+            SplashMode: showSplash));
     }
 
     public static void DrawMiniPlayer(PlayerSnapshot snapshot, string notice)
@@ -86,10 +88,16 @@ internal static class TerminalFrameRenderer
             output.Append("\u001b[K");
         }
 
-        if (renderInput && !context.MiniMode)
+        if (renderInput && !context.MiniMode && !context.SplashMode)
             AppendInputLine(output, normalized);
 
-        if (!context.MiniMode && ResolveInputCursor(normalized) is { } cursor)
+        if (context.SplashMode)
+        {
+            AppendClearLine(output, height, width);
+            AppendSplashBorder(output, width, mainHeight);
+        }
+
+        if (!context.MiniMode && !context.SplashMode && ResolveInputCursor(normalized) is { } cursor)
             output.Append($"\u001b[{cursor.Row};{cursor.Column}H\u001b[?25h");
 
         output.Append("\u001b[?7h");
@@ -107,7 +115,13 @@ internal static class TerminalFrameRenderer
         var context = new RenderContext(
             width,
             height,
-            new PlayerSnapshot(PlaybackStatus.Stopped, null, [], [], null, 100),
+            new PlayerSnapshot(
+                PlaybackStatus.Stopped,
+                null,
+                Array.Empty<Track>(),
+                Array.Empty<Track>(),
+                null,
+                100),
             string.Empty,
             input,
             ShowHelp: false,
@@ -160,6 +174,24 @@ internal static class TerminalFrameRenderer
         return true;
     }
 
+    public static bool TryResolveVolumeClick(int x, int y, out int volumePercent)
+    {
+        volumePercent = 0;
+        if (_lastVolumeHitbox is not { } hitbox ||
+            y != hitbox.Y ||
+            x < hitbox.X ||
+            x >= hitbox.X + hitbox.Width)
+        {
+            return false;
+        }
+
+        var ratio = hitbox.Width <= 1
+            ? 0
+            : (double)(x - hitbox.X) / (hitbox.Width - 1);
+        volumePercent = Math.Clamp((int)Math.Round(ratio * 100), 0, 100);
+        return true;
+    }
+
     public static void ResetFrameCache()
     {
         _lastRenderedLines = null;
@@ -167,7 +199,8 @@ internal static class TerminalFrameRenderer
         _lastRenderedHeight = 0;
         _lastRenderedTerminalHeight = 0;
         _lastProgressHitbox = null;
-        _lastPlaylistHitboxes = [];
+        _lastVolumeHitbox = null;
+        _lastPlaylistHitboxes = Array.Empty<PlaylistHitbox>();
     }
 
     private static void AppendInputLine(StringBuilder output, RenderContext context)
@@ -178,6 +211,32 @@ internal static class TerminalFrameRenderer
         output.Append($"\u001b[{height};1H");
         output.Append(TerminalText.PadAnsiAware(line, width));
         output.Append("\u001b[K");
+    }
+
+    private static void AppendClearLine(StringBuilder output, int row, int width)
+    {
+        if (row <= 0)
+            return;
+
+        output.Append($"\u001b[{row};1H");
+        output.Append(new string(' ', Math.Max(0, width)));
+        output.Append("\u001b[K");
+    }
+
+    private static void AppendSplashBorder(StringBuilder output, int width, int height)
+    {
+        if (width < 2 || height < 2)
+            return;
+
+        var horizontal = new string('─', Math.Max(0, width - 2));
+        output.Append(TerminalStyles.AnsiAccent);
+        output.Append($"\u001b[1;1H╭{horizontal}╮");
+
+        for (var row = 2; row < height; row++)
+            output.Append($"\u001b[{row};1H│\u001b[{row};{width}H│");
+
+        output.Append($"\u001b[{height};1H╰{horizontal}╯");
+        output.Append(TerminalStyles.Reset);
     }
 
     private static IReadOnlyList<string> RenderToLines(IRenderable renderable, int width, int height)
@@ -214,7 +273,21 @@ internal static class TerminalFrameRenderer
         if (context.MiniMode)
         {
             _lastProgressHitbox = null;
-            _lastPlaylistHitboxes = [];
+            _lastVolumeHitbox = null;
+            _lastPlaylistHitboxes = Array.Empty<PlaylistHitbox>();
+            return;
+        }
+
+        if (context.SplashMode)
+        {
+            var hitboxes = SplashCanvas.ResolveHitboxes(context.Width, context.Height, context.Snapshot);
+            _lastProgressHitbox = hitboxes.Progress is { } progress
+                ? new ProgressHitbox(progress.X, progress.Y, progress.Width)
+                : null;
+            _lastVolumeHitbox = hitboxes.Volume is { } volume
+                ? new ProgressHitbox(volume.X, volume.Y, volume.Width)
+                : null;
+            _lastPlaylistHitboxes = Array.Empty<PlaylistHitbox>();
             return;
         }
 
@@ -249,6 +322,7 @@ internal static class TerminalFrameRenderer
                 headerHeight + nowPlayingHeight + queuePanelHeight + 3,
                 Math.Max(1, PlaybackPanel.ProgressHitboxWidth(context.Snapshot, layoutWidth)))
             : null;
+        _lastVolumeHitbox = null;
     }
 
     private static int QueueCount(PlayerSnapshot snapshot) =>

@@ -60,7 +60,7 @@ internal static class TerminalHost
             return;
 
         EnableInteractiveInput();
-        Console.Write("\u001b[?1049h\u001b[?1000h\u001b[?1006h\u001b[?25l\u001b[H\u001b[2J");
+        Console.Write("\u001b[?1049h\u001b[?1000h\u001b[?1002h\u001b[?1006h\u001b[?25l\u001b[H\u001b[2J");
         _usingAlternateScreen = true;
         TerminalFrameRenderer.ResetFrameCache();
     }
@@ -71,7 +71,7 @@ internal static class TerminalHost
             return;
 
         TerminalFrameRenderer.ResetFrameCache();
-        Console.Write("\u001b[?1006l\u001b[?1000l\u001b[?25h\u001b[?1049l");
+        Console.Write("\u001b[?1006l\u001b[?1002l\u001b[?1000l\u001b[?25h\u001b[?1049l");
         RestoreStandardInput();
         _usingAlternateScreen = false;
     }
@@ -80,7 +80,7 @@ internal static class TerminalHost
     {
         var restoreInteractiveInput = _usingAlternateScreen;
         if (restoreInteractiveInput && !Console.IsOutputRedirected)
-            Console.Write("\u001b[?1006l\u001b[?1000l\u001b[?25h");
+            Console.Write("\u001b[?1006l\u001b[?1002l\u001b[?1000l\u001b[?25h");
 
         RestoreStandardInput();
 
@@ -94,7 +94,7 @@ internal static class TerminalHost
             {
                 EnableInteractiveInput();
                 if (!Console.IsOutputRedirected)
-                    Console.Write("\u001b[?1000h\u001b[?1006h\u001b[?25l");
+                    Console.Write("\u001b[?1000h\u001b[?1002h\u001b[?1006h\u001b[?25l");
             }
         }
     }
@@ -128,7 +128,7 @@ internal static class TerminalHost
         try
         {
             if (!Console.IsOutputRedirected)
-                Console.Write("\u001b[?1006l\u001b[?1000l\u001b[?25h\u001b[0 q");
+                Console.Write("\u001b[?1006l\u001b[?1002l\u001b[?1000l\u001b[?25h\u001b[0 q");
             RestoreStandardInput();
         }
         catch

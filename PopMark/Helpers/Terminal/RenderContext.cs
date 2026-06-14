@@ -12,4 +12,5 @@ internal sealed record RenderContext(
     bool ShowControls,
     bool MiniMode,
     int AnimationFrame,
-    int QueueScrollOffset);
+    int QueueScrollOffset,
+    bool SplashMode = false);

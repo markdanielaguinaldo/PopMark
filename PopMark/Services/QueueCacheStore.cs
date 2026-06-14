@@ -22,23 +22,23 @@ public static class QueueCacheStore
         try
         {
             if (!File.Exists(CacheFilePath))
-                return new PlayerSnapshot(PlaybackStatus.Stopped, null, [], []);
+                return new PlayerSnapshot(PlaybackStatus.Stopped, null, Array.Empty<Track>(), Array.Empty<Track>());
 
             var json = File.ReadAllText(CacheFilePath);
             var cache = JsonSerializer.Deserialize<QueueCache>(json, JsonOptions);
             if (cache is null)
-                return new PlayerSnapshot(PlaybackStatus.Stopped, null, [], []);
+                return new PlayerSnapshot(PlaybackStatus.Stopped, null, Array.Empty<Track>(), Array.Empty<Track>());
 
             return new PlayerSnapshot(
                 PlaybackStatus.Stopped,
                 cache.Current,
-                cache.Pending ?? [],
-                cache.Previous ?? [],
+                cache.Pending ?? new List<Track>(),
+                cache.Previous ?? new List<Track>(),
                 VolumePercent: Math.Clamp(cache.VolumePercent ?? 100, 0, 130));
         }
         catch
         {
-            return new PlayerSnapshot(PlaybackStatus.Stopped, null, [], []);
+            return new PlayerSnapshot(PlaybackStatus.Stopped, null, Array.Empty<Track>(), Array.Empty<Track>());
         }
     }
 

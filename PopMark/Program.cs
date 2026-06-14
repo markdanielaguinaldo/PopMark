@@ -38,6 +38,7 @@ internal static class Program
         var notice = "Ready. Add a YouTube video or playlist URL to start.";
         var showHelp = false;
         var showControls = false;
+        var showSplash = false;
         var queueScrollOffset = 0;
         player.LastMessage = notice;
         player.SnapshotChanged += QueueCacheStore.Save;
@@ -97,7 +98,7 @@ internal static class Program
 
             while (keepRunning)
             {
-                ConsoleHelper.DrawCommandCenter(player.CreateSnapshot(), player.LastMessage, showHelp, queueScrollOffset, showControls);
+                ConsoleHelper.DrawCommandCenter(player.CreateSnapshot(), player.LastMessage, showHelp, queueScrollOffset, showControls, showSplash);
                 ConsoleHelper.UseBarCursor();
 
                 var input = ConsoleHelper.ReadReactiveInput(
@@ -109,8 +110,10 @@ internal static class Program
                     null,
                     () => showHelp,
                     () => queueScrollOffset,
-                    () => showControls);
-                ConsoleHelper.ShowCursor();
+                    () => showControls,
+                    () => showSplash);
+                if (!showSplash)
+                    ConsoleHelper.ShowCursor();
 
                 if (string.IsNullOrWhiteSpace(input))
                 {
@@ -127,9 +130,28 @@ internal static class Program
 
                 try
                 {
+                    if (TryProcessViewCommand(parsedArgs[0], ref showSplash, out var viewMessage))
+                    {
+                        showHelp = false;
+                        showControls = false;
+                        player.LastMessage = viewMessage;
+                        notice = player.LastMessage;
+                        (lastWidth, lastHeight) = ConsoleHelper.GetWindowSize();
+                        continue;
+                    }
+
                     if (TryResolvePlaylistClickCommand(parsedArgs[0], player.CreateSnapshot(), out var trackIndex))
                     {
                         await player.PlayAtQueueIndexAsync(trackIndex);
+                        notice = player.LastMessage;
+                        (lastWidth, lastHeight) = ConsoleHelper.GetWindowSize();
+                        continue;
+                    }
+
+                    if (TryResolveVolumeClickCommand(parsedArgs[0], player.CreateSnapshot(), out var volumePercent))
+                    {
+                        var snapshot = player.CreateSnapshot();
+                        await player.AdjustVolumeAsync(volumePercent - snapshot.VolumePercent);
                         notice = player.LastMessage;
                         (lastWidth, lastHeight) = ConsoleHelper.GetWindowSize();
                         continue;
@@ -162,6 +184,18 @@ internal static class Program
                     if (IsVolumeCommand(parsedArgs[0]))
                     {
                         await player.AdjustVolumeAsync(ResolveVolumeStepPercent(parsedArgs[0]));
+                        notice = player.LastMessage;
+                        (lastWidth, lastHeight) = ConsoleHelper.GetWindowSize();
+                        continue;
+                    }
+
+                    if (IsTrackNavigationCommand(parsedArgs[0]))
+                    {
+                        if (IsNextTrackCommand(parsedArgs[0]))
+                            await player.NextAsync();
+                        else
+                            await player.PreviousAsync();
+
                         notice = player.LastMessage;
                         (lastWidth, lastHeight) = ConsoleHelper.GetWindowSize();
                         continue;
@@ -290,14 +324,14 @@ internal static class Program
             case "skip":
             case "n":
             case "]":
-                player.LastMessage = DeprecatedTrackNavigationMessage("next");
+                await player.NextAsync();
                 return false;
 
             case "previous":
             case "prev":
             case "back":
             case "[":
-                player.LastMessage = DeprecatedTrackNavigationMessage("previous");
+                await player.PreviousAsync();
                 return false;
 
             case "__seek-forward":
@@ -603,8 +637,44 @@ internal static class Program
         command.Equals("__volume-up", StringComparison.OrdinalIgnoreCase) ||
         command.Equals("__volume-down", StringComparison.OrdinalIgnoreCase);
 
+    private static bool IsTrackNavigationCommand(string command) =>
+        IsNextTrackCommand(command) ||
+        command.Equals("__previous-track", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsNextTrackCommand(string command) =>
+        command.Equals("__next-track", StringComparison.OrdinalIgnoreCase);
+
     private static bool IsInternalCommand(string input) =>
         input.StartsWith("__", StringComparison.Ordinal);
+
+    private static bool TryProcessViewCommand(string command, ref bool showSplash, out string message)
+    {
+        switch (command.ToLowerInvariant())
+        {
+            case "__toggle-view":
+                showSplash = !showSplash;
+                message = showSplash
+                    ? "Splash view. Press Tab or type playlist to return."
+                    : "Playlist view. Press Tab or type splash to return.";
+                return true;
+            case "splash":
+            case "art":
+            case "visual":
+            case "visualizer":
+                showSplash = true;
+                message = "Splash view. Press Tab or type playlist to return.";
+                return true;
+            case "playlist":
+            case "queue":
+            case "menu":
+                showSplash = false;
+                message = "Playlist view. Press Tab or type splash to return.";
+                return true;
+            default:
+                message = string.Empty;
+                return false;
+        }
+    }
 
     private static bool TryProcessQueueScrollCommand(
         string command,
@@ -655,6 +725,16 @@ internal static class Program
             return false;
 
         return ConsoleHelper.TryResolveProgressClick(x, y, snapshot, out timestamp);
+    }
+
+    private static bool TryResolveVolumeClickCommand(string command, PlayerSnapshot snapshot, out int volumePercent)
+    {
+        _ = snapshot;
+        volumePercent = 0;
+        if (!TryResolveMousePointCommand(command, out var x, out var y))
+            return false;
+
+        return ConsoleHelper.TryResolveVolumeClick(x, y, out volumePercent);
     }
 
     private static bool TryResolvePlaylistClickCommand(string command, PlayerSnapshot snapshot, out int trackIndex)

@@ -4,7 +4,7 @@ namespace PopMark.Services;
 
 public static class ToolLocator
 {
-    private static readonly string[] WindowsExecutableExtensions = [".exe", ".cmd", ".bat", ".com"];
+    private static readonly string[] WindowsExecutableExtensions = { ".exe", ".cmd", ".bat", ".com" };
 
     public static string ToolRoot =>
         Path.Combine(
@@ -119,7 +119,7 @@ public static class ToolLocator
     private static IEnumerable<string> GetExecutableCandidates(string commandName)
     {
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows) || Path.HasExtension(commandName))
-            return [commandName];
+            return new[] { commandName };
 
         var extensions = Environment.GetEnvironmentVariable("PATHEXT")?
             .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)

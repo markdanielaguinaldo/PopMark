@@ -17,8 +17,8 @@ public static class ConsoleHelper
     public static void LeaveInteractiveScreen() =>
         TerminalHost.LeaveInteractiveScreen();
 
-    public static void DrawCommandCenter(PlayerSnapshot snapshot, string notice, bool showHelp = false, int queueScrollOffset = 0, bool showControls = false) =>
-        TerminalFrameRenderer.DrawCommandCenter(snapshot, notice, showHelp, queueScrollOffset, showControls);
+    public static void DrawCommandCenter(PlayerSnapshot snapshot, string notice, bool showHelp = false, int queueScrollOffset = 0, bool showControls = false, bool showSplash = false) =>
+        TerminalFrameRenderer.DrawCommandCenter(snapshot, notice, showHelp, queueScrollOffset, showControls, showSplash);
 
     public static void DrawMiniPlayer(PlayerSnapshot snapshot, string notice) =>
         TerminalFrameRenderer.DrawMiniPlayer(snapshot, notice);
@@ -29,6 +29,9 @@ public static class ConsoleHelper
     public static bool TryResolvePlaylistClick(int x, int y, PlayerSnapshot snapshot, out int trackIndex) =>
         TerminalFrameRenderer.TryResolvePlaylistClick(x, y, snapshot, out trackIndex);
 
+    public static bool TryResolveVolumeClick(int x, int y, out int volumePercent) =>
+        TerminalFrameRenderer.TryResolveVolumeClick(x, y, out volumePercent);
+
     public static string ReadReactiveInput(
         ref int lastWidth,
         ref int lastHeight,
@@ -38,7 +41,8 @@ public static class ConsoleHelper
         Func<bool>? miniModeProvider = null,
         Func<bool>? helpModeProvider = null,
         Func<int>? queueScrollOffsetProvider = null,
-        Func<bool>? controlsModeProvider = null) =>
+        Func<bool>? controlsModeProvider = null,
+        Func<bool>? splashModeProvider = null) =>
         ReactiveInputReader.Read(
             ref lastWidth,
             ref lastHeight,
@@ -48,7 +52,8 @@ public static class ConsoleHelper
             miniModeProvider,
             helpModeProvider,
             queueScrollOffsetProvider,
-            controlsModeProvider);
+            controlsModeProvider,
+            splashModeProvider);
 
     public static T RunWithStandardInput<T>(Func<T> action) =>
         TerminalHost.RunWithStandardInput(action);

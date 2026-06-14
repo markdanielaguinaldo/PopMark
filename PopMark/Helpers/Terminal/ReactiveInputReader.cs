@@ -360,7 +360,9 @@ internal static class ReactiveInputReader
     private static string ResolveMouseButtonCommand(int button, int x, int y)
     {
         if ((button & 64) == 64)
-            return (button & 1) == 0 ? "__queue-up" : "__queue-down";
+            return (button & 1) == 0
+                ? $"__mouse-wheel-up:{x}:{y}"
+                : $"__mouse-wheel-down:{x}:{y}";
 
         return (button & 3) == 0
             ? $"__mouse-click:{x}:{y}"

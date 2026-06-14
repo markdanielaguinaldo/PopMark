@@ -176,18 +176,21 @@ internal static class TerminalFrameRenderer
 
     public static bool TryResolveVolumeClick(int x, int y, out int volumePercent)
     {
+        const int widgetPaddingLeft = 4;
+        const int widgetPaddingRight = 6;
         volumePercent = 0;
         if (_lastVolumeHitbox is not { } hitbox ||
             y != hitbox.Y ||
-            x < hitbox.X ||
-            x >= hitbox.X + hitbox.Width)
+            x < hitbox.X - widgetPaddingLeft ||
+            x >= hitbox.X + hitbox.Width + widgetPaddingRight)
         {
             return false;
         }
 
+        var clampedX = Math.Clamp(x, hitbox.X, hitbox.X + hitbox.Width - 1);
         var ratio = hitbox.Width <= 1
             ? 0
-            : (double)(x - hitbox.X) / (hitbox.Width - 1);
+            : (double)(clampedX - hitbox.X) / (hitbox.Width - 1);
         volumePercent = Math.Clamp((int)Math.Round(ratio * 100), 0, 100);
         return true;
     }

@@ -157,6 +157,14 @@ internal static class Program
                         continue;
                     }
 
+                    if (TryResolveVolumeWheelCommand(parsedArgs[0], showSplash, out var volumeDelta))
+                    {
+                        await player.AdjustVolumeAsync(volumeDelta);
+                        notice = player.LastMessage;
+                        (lastWidth, lastHeight) = ConsoleHelper.GetWindowSize();
+                        continue;
+                    }
+
                     if (TryResolveProgressClickCommand(parsedArgs[0], player.CreateSnapshot(), out var timestamp))
                     {
                         await player.SeekAbsoluteAsync(timestamp);
@@ -685,6 +693,19 @@ internal static class Program
         const int scrollStep = 5;
         var totalTracks = snapshot.Previous.Count + snapshot.Pending.Count + (snapshot.Current is null ? 0 : 1);
         var maxOffset = Math.Max(0, totalTracks - 1);
+        if (TryResolveMouseWheelPointCommand(command, out _, out _, out var wheelDirection))
+        {
+            if (wheelDirection > 0)
+            {
+                queueScrollOffset = Math.Max(0, queueScrollOffset - 1);
+                message = "Playlist scrolled up.";
+                return true;
+            }
+
+            queueScrollOffset = Math.Min(maxOffset, queueScrollOffset + 1);
+            message = "Playlist scrolled down.";
+            return true;
+        }
 
         switch (command.ToLowerInvariant())
         {
@@ -737,6 +758,19 @@ internal static class Program
         return ConsoleHelper.TryResolveVolumeClick(x, y, out volumePercent);
     }
 
+    private static bool TryResolveVolumeWheelCommand(string command, bool showSplash, out int volumeDelta)
+    {
+        volumeDelta = 0;
+        if (!TryResolveMouseWheelPointCommand(command, out var x, out var y, out var direction))
+            return false;
+
+        if (!showSplash && !ConsoleHelper.TryResolveVolumeClick(x, y, out _))
+            return false;
+
+        volumeDelta = direction * VolumeStepPercent;
+        return true;
+    }
+
     private static bool TryResolvePlaylistClickCommand(string command, PlayerSnapshot snapshot, out int trackIndex)
     {
         trackIndex = -1;
@@ -755,6 +789,25 @@ internal static class Program
         {
             return false;
         }
+
+        var parts = command.Split(':');
+        return parts.Length == 3 &&
+               int.TryParse(parts[1], out x) &&
+               int.TryParse(parts[2], out y);
+    }
+
+    private static bool TryResolveMouseWheelPointCommand(string command, out int x, out int y, out int direction)
+    {
+        x = 0;
+        y = 0;
+        direction = 0;
+
+        if (command.StartsWith("__mouse-wheel-up:", StringComparison.Ordinal))
+            direction = 1;
+        else if (command.StartsWith("__mouse-wheel-down:", StringComparison.Ordinal))
+            direction = -1;
+        else
+            return false;
 
         var parts = command.Split(':');
         return parts.Length == 3 &&

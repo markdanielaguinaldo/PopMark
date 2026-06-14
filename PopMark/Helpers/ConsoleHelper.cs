@@ -68,6 +68,9 @@ public static class ConsoleHelper
     public static (int Width, int Height) GetWindowSize() =>
         TerminalHost.GetWindowSize();
 
+    public static void ClearScreen() =>
+        TerminalHost.Clear();
+
     public static void Info(string message) =>
         TerminalHost.Info(message);
 

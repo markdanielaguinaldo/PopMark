@@ -10,6 +10,12 @@ internal static class TerminalText
         return visible >= width ? value : $"{value}{new string(' ', width - visible)}";
     }
 
+    public static string PadPlain(string value, int width)
+    {
+        var visible = VisibleLength(value);
+        return visible >= width ? value : $"{value}{new string(' ', width - visible)}";
+    }
+
     public static string TrimAnsiAware(string value, int width)
     {
         if (width <= 0)

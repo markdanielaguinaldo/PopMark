@@ -75,12 +75,13 @@ Update `Version`, `AssemblyVersion`, `FileVersion`, and `InformationalVersion` t
 
 | Command | Action |
 | --- | --- |
-| `add <url>` | Add a YouTube video or playlist |
+| `add <url or search>` | Add a YouTube video, playlist, or search result |
 | `play` / `pause` | Toggle playback |
 | `goto <#\|title>` | Scroll to a playlist song |
 | `shuffle` | Randomize the playlist |
 | `version` | Show the current app version |
 | `clear playlist` | Stop playback and empty the queue |
+| `clear` / `cls` | Redraw the screen |
 | `help` | Show typed commands |
 | `controls` | Show keyboard and mouse controls |
 | `quit` | Stop playback and exit |

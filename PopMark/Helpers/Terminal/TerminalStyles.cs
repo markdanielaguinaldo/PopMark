@@ -3,6 +3,8 @@ namespace PopMark.Helpers.Terminal;
 internal static class TerminalStyles
 {
     public const string Accent = "#00d4ff";
+    public const string Secondary = "#3b82f6";
+    public const string Boost = "#c084fc";
     public const string SuccessColor = "#00d4ff";
     public const string Muted = "grey70";
     public const string Reset = "\u001b[0m";

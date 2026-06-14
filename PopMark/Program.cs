@@ -271,20 +271,13 @@ internal static class Program
                 return false;
 
             case "add":
-            case "a":
-            case "load":
-                var url = ResolveUrlArgument(args, rawInput);
-                if (string.IsNullOrWhiteSpace(url))
+                if (!TryResolveAddTarget(args, out var target))
                 {
-                    url = ConsoleHelper.RunWithStandardInput(() =>
-                        AnsiConsole.Prompt(
-                            new TextPrompt<string>("[bold deepskyblue1]YouTube URL[/]:")
-                                .Validate(value => IsLikelyUrl(value)
-                                    ? ValidationResult.Success()
-                                    : ValidationResult.Error("[cyan1]Enter a valid URL.[/]"))));
+                    player.LastMessage = AddUsageMessage();
+                    return false;
                 }
 
-                await AddUrlAsync(player, dependencies, url, promptToInstallDependencies: true, confirmInstallDependencies: true, showStatus: true);
+                await AddUrlAsync(player, dependencies, target, promptToInstallDependencies: true, confirmInstallDependencies: true, showStatus: true);
                 return false;
 
             case "play":
@@ -330,7 +323,19 @@ internal static class Program
                     return false;
                 }
 
-                player.LastMessage = "Unknown command: clear. Type help to list commands.";
+                if (args.Length == 1)
+                {
+                    ConsoleHelper.ClearScreen();
+                    player.LastMessage = "Screen cleared.";
+                    return false;
+                }
+
+                player.LastMessage = UnknownCommandMessage("clear");
+                return false;
+
+            case "cls":
+                ConsoleHelper.ClearScreen();
+                player.LastMessage = "Screen cleared.";
                 return false;
 
             case "quit":
@@ -346,9 +351,21 @@ internal static class Program
                     return false;
                 }
 
-                player.LastMessage = $"Unknown command: {command}. Type help to list commands.";
+                player.LastMessage = UnknownCommandMessage(command);
                 return false;
         }
+    }
+
+    private static string UnknownCommandMessage(string command) =>
+        $"Unknown command: {ShortCommand(command)}. Type help to list commands.";
+
+    private static string ShortCommand(string command)
+    {
+        command = command.Trim();
+        const int maxLength = 28;
+        return command.Length <= maxLength
+            ? command
+            : $"{command[..maxLength]}...";
     }
 
     private static async Task<int> RunNonInteractiveAsync(
@@ -461,7 +478,7 @@ internal static class Program
         var nonInteractive = args.Any(arg => arg.Equals("--non-interactive", StringComparison.OrdinalIgnoreCase) ||
                                             arg.Equals("--no-tui", StringComparison.OrdinalIgnoreCase));
 
-        if (command is not ("play-test" or "test-add") && !(command is "add" or "a" or "load" && nonInteractive))
+        if (command is not ("play-test" or "test-add") && !(command is "add" && nonInteractive))
             return false;
 
         var url = args
@@ -499,14 +516,24 @@ internal static class Program
         return 15;
     }
 
-    private static string? ResolveUrlArgument(string[] args, string rawInput)
+    private static bool TryResolveAddTarget(string[] args, out string target)
     {
-        if (args.Length >= 2)
-            return string.Join(' ', args.Skip(1)).Trim();
+        target = string.Empty;
+        if (args.Length < 2)
+            return false;
 
-        var firstSpace = rawInput.IndexOf(' ');
-        return firstSpace >= 0 ? rawInput[(firstSpace + 1)..].Trim() : null;
+        var value = string.Join(' ', args.Skip(1)).Trim();
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        target = IsLikelyUrl(value)
+            ? value
+            : $"ytsearch1:{value}";
+        return true;
     }
+
+    private static string AddUsageMessage() =>
+        "Usage: add <url or search>";
 
     private static string DeprecatedTrackNavigationMessage(string command) =>
         $"{command} is deprecated. Click a playlist song to play it directly, or use goto <#|title> to focus a song.";

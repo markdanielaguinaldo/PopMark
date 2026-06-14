@@ -27,14 +27,15 @@ internal static class ReactiveInputReader
 
         var buffer = new StringBuilder();
         var animationFrame = 0;
-        var lastRefresh = DateTimeOffset.MinValue;
+        var lastMainRefresh = DateTimeOffset.MinValue;
+        var lastStateCheck = DateTimeOffset.MinValue;
         var lastScreenSignature = string.Empty;
         var trackedWidth = lastWidth;
         var trackedHeight = lastHeight;
+        const int PlaybackRefreshMilliseconds = 110;
+        const int StateCheckMilliseconds = 250;
 
-        bool IsInputActive() => buffer.Length > 0;
-
-        void RefreshScreen(bool advanceAnimation = false)
+        void RefreshMain(bool advanceAnimation = false, bool renderInput = false, bool forceFullPaint = false)
         {
             if (advanceAnimation)
                 animationFrame++;
@@ -53,26 +54,35 @@ internal static class ReactiveInputReader
                 miniModeProvider?.Invoke() == true,
                 animationFrame,
                 queueScrollOffsetProvider?.Invoke() ?? 0);
-            TerminalFrameRenderer.Render(context);
-            lastRefresh = DateTimeOffset.UtcNow;
+            TerminalFrameRenderer.Render(context, forceFullPaint, renderInput);
+            lastMainRefresh = DateTimeOffset.UtcNow;
+            lastStateCheck = lastMainRefresh;
             lastScreenSignature = BuildScreenSignature(
                 snapshotProvider,
                 noticeProvider,
                 miniModeProvider,
                 helpModeProvider,
                 controlsModeProvider,
-                buffer.ToString(),
-                includeElapsed: !IsInputActive()) ?? string.Empty;
+                queueScrollOffsetProvider,
+                includeElapsed: true) ?? string.Empty;
         }
 
-        RefreshScreen();
+        void RefreshInput()
+        {
+            var (width, height) = TerminalHost.GetWindowSize();
+            trackedWidth = width;
+            trackedHeight = height;
+            TerminalFrameRenderer.RenderInputLine(width, height, buffer.ToString());
+        }
+
+        RefreshMain(renderInput: true, forceFullPaint: true);
 
         while (true)
         {
             var (width, height) = TerminalHost.GetWindowSize();
             if (width > 0 && height > 0 && (width != trackedWidth || height != trackedHeight))
             {
-                RefreshScreen();
+                RefreshMain(renderInput: true, forceFullPaint: true);
                 continue;
             }
 
@@ -80,26 +90,30 @@ internal static class ReactiveInputReader
             {
                 var now = DateTimeOffset.UtcNow;
                 var snapshot = snapshotProvider();
-                var inputActive = IsInputActive();
-                var isAnimating = !inputActive && snapshot.Status is PlaybackStatus.Playing or PlaybackStatus.Loading;
-                var refreshMilliseconds = isAnimating ? 110 : 250;
-                if ((now - lastRefresh).TotalMilliseconds >= refreshMilliseconds)
+                var playbackCanRefresh = snapshot.Status is PlaybackStatus.Playing or PlaybackStatus.Loading;
+                var refreshDue = playbackCanRefresh &&
+                                 (now - lastMainRefresh).TotalMilliseconds >= PlaybackRefreshMilliseconds;
+                var stateChanged = false;
+                if ((now - lastStateCheck).TotalMilliseconds >= StateCheckMilliseconds)
                 {
+                    lastStateCheck = now;
                     var screenSignature = BuildScreenSignature(
                         snapshotProvider,
                         noticeProvider,
                         miniModeProvider,
                         helpModeProvider,
                         controlsModeProvider,
-                        buffer.ToString(),
-                        includeElapsed: !inputActive) ?? string.Empty;
-                    if (isAnimating || !string.Equals(screenSignature, lastScreenSignature, StringComparison.Ordinal))
-                    {
-                        RefreshScreen(advanceAnimation: isAnimating);
-                    }
+                        queueScrollOffsetProvider,
+                        includeElapsed: true) ?? string.Empty;
+                    stateChanged = !string.Equals(screenSignature, lastScreenSignature, StringComparison.Ordinal);
                 }
 
-                Thread.Sleep(isAnimating ? 24 : 40);
+                if (refreshDue || stateChanged)
+                {
+                    RefreshMain(advanceAnimation: playbackCanRefresh, renderInput: false);
+                }
+
+                Thread.Sleep(20);
                 continue;
             }
 
@@ -161,7 +175,7 @@ internal static class ReactiveInputReader
                 if (buffer.Length > 0)
                 {
                     buffer.Length--;
-                    RefreshScreen();
+                    RefreshInput();
                 }
 
                 continue;
@@ -170,7 +184,7 @@ internal static class ReactiveInputReader
             if (!char.IsControl(key.KeyChar))
             {
                 buffer.Append(key.KeyChar);
-                RefreshScreen();
+                RefreshInput();
             }
         }
 
@@ -376,7 +390,7 @@ internal static class ReactiveInputReader
         Func<bool>? miniModeProvider,
         Func<bool>? helpModeProvider,
         Func<bool>? controlsModeProvider,
-        string input,
+        Func<int>? queueScrollOffsetProvider,
         bool includeElapsed)
     {
         if (snapshotProvider is null || noticeProvider is null)
@@ -392,11 +406,13 @@ internal static class ReactiveInputReader
             .Append('|')
             .Append(snapshot.Status)
             .Append('|')
+            .Append(snapshot.VolumePercent)
+            .Append('|')
             .Append(noticeProvider())
             .Append('|')
-            .Append(input)
+            .Append(queueScrollOffsetProvider?.Invoke() ?? 0)
             .Append('|')
-            .Append(includeElapsed ? snapshot.Elapsed?.TotalSeconds.ToString("0") : "static-input")
+            .Append(includeElapsed && snapshot.Elapsed is { } elapsed ? ((long)(elapsed.TotalMilliseconds / 250)).ToString() : "static")
             .Append('|');
 
         foreach (var track in snapshot.Previous)

@@ -173,7 +173,7 @@ internal static class Program
                         continue;
                     }
 
-                    if (TryProcessQueueScrollCommand(parsedArgs[0], player.CreateSnapshot(), ref queueScrollOffset, out var scrollMessage))
+                    if (TryProcessQueueScrollCommand(parsedArgs[0], player.CreateSnapshot(), lastHeight, ref queueScrollOffset, out var scrollMessage))
                     {
                         player.LastMessage = scrollMessage;
                         notice = scrollMessage;
@@ -687,22 +687,26 @@ internal static class Program
     private static bool TryProcessQueueScrollCommand(
         string command,
         PlayerSnapshot snapshot,
+        int terminalHeight,
         ref int queueScrollOffset,
         out string message)
     {
+        const int mouseWheelScrollStep = 3;
         const int scrollStep = 5;
         var totalTracks = snapshot.Previous.Count + snapshot.Pending.Count + (snapshot.Current is null ? 0 : 1);
-        var maxOffset = Math.Max(0, totalTracks - 1);
+        var visibleRows = VisibleQueueRows(terminalHeight);
+        var maxOffset = Math.Max(0, totalTracks - visibleRows);
+        queueScrollOffset = Math.Clamp(queueScrollOffset, 0, maxOffset);
         if (TryResolveMouseWheelPointCommand(command, out _, out _, out var wheelDirection))
         {
             if (wheelDirection > 0)
             {
-                queueScrollOffset = Math.Max(0, queueScrollOffset - 1);
+                queueScrollOffset = Math.Max(0, queueScrollOffset - mouseWheelScrollStep);
                 message = "Playlist scrolled up.";
                 return true;
             }
 
-            queueScrollOffset = Math.Min(maxOffset, queueScrollOffset + 1);
+            queueScrollOffset = Math.Min(maxOffset, queueScrollOffset + mouseWheelScrollStep);
             message = "Playlist scrolled down.";
             return true;
         }
@@ -737,6 +741,19 @@ internal static class Program
                 message = string.Empty;
                 return false;
         }
+    }
+
+    private static int VisibleQueueRows(int terminalHeight)
+    {
+        var height = terminalHeight > 0 ? terminalHeight : 24;
+        var mainHeight = Math.Max(1, height - 1);
+        var layoutHeight = Math.Max(18, mainHeight);
+        const int headerHeight = 1;
+        const int nowPlayingHeight = 6;
+        const int playbackHeight = 4;
+        const int helpHeight = 1;
+        var queueHeight = Math.Max(4, layoutHeight - headerHeight - nowPlayingHeight - playbackHeight - helpHeight);
+        return Math.Max(1, queueHeight - 2);
     }
 
     private static bool TryResolveProgressClickCommand(string command, PlayerSnapshot snapshot, out TimeSpan timestamp)

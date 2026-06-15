@@ -178,9 +178,12 @@ internal static class TerminalFrameRenderer
     {
         const int widgetPaddingLeft = 4;
         const int widgetPaddingRight = 6;
+        const int widgetPaddingTop = 1;
+        const int widgetPaddingBottom = 1;
         volumePercent = 0;
         if (_lastVolumeHitbox is not { } hitbox ||
-            y != hitbox.Y ||
+            y < hitbox.Y - widgetPaddingTop ||
+            y > hitbox.Y + widgetPaddingBottom ||
             x < hitbox.X - widgetPaddingLeft ||
             x >= hitbox.X + hitbox.Width + widgetPaddingRight)
         {

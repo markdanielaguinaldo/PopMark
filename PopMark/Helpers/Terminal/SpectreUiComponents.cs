@@ -131,23 +131,23 @@ internal static class SplashCanvas
             AddControlLegend(cells, height - 2);
         }
 
-        AddMiddleDecorations(cells, frame);
+        AddMiddleDecorations(cells, frame, snapshot);
         AddParticles(cells, frame, pulse);
     }
 
-    private static void AddMiddleDecorations(SplashCell[,] cells, int frame)
+    private static void AddMiddleDecorations(SplashCell[,] cells, int frame, PlayerSnapshot? snapshot)
     {
         var height = cells.GetLength(0);
         var width = cells.GetLength(1);
         if (width < 56 || height < 16)
             return;
 
-        AddRightOwl(cells, Math.Max(4, height / 2 - 2), Math.Max(0, width - 12), frame);
+        AddRightOwl(cells, Math.Max(4, height / 2 - 2), Math.Max(0, width - 12), frame, snapshot);
     }
 
-    private static void AddRightOwl(SplashCell[,] cells, int startRow, int column, int frame)
+    private static void AddRightOwl(SplashCell[,] cells, int startRow, int column, int frame, PlayerSnapshot? snapshot)
     {
-        var eyes = SplashOwlEyesForFrame(frame);
+        var eyes = SplashOwlEyesForFrame(frame, snapshot);
         var art = new[]
         {
             " ^...^ ",
@@ -172,8 +172,11 @@ internal static class SplashCanvas
             _ => "grey70"
         };
 
-    private static string SplashOwlEyesForFrame(int frame)
+    private static string SplashOwlEyesForFrame(int frame, PlayerSnapshot? snapshot)
     {
+        if (snapshot?.Status != PlaybackStatus.Playing)
+            return "-,-";
+
         var cycle = frame % 120;
         if (cycle is >= 88 and <= 112)
             return "z,z";
@@ -608,7 +611,7 @@ internal static class NowPlayingPanel
         var snapshot = context.Snapshot;
         var track = snapshot.Current ?? snapshot.Pending.FirstOrDefault();
         var contentWidth = Math.Max(1, width - 4);
-        var owl = OwlLines(OwlExpressionForFrame(context.AnimationFrame));
+        var owl = OwlLines(OwlExpressionForFrame(context.AnimationFrame, snapshot.Status));
         var owlWidth = owl.Max(line => line.Width);
         var showOwl = contentWidth >= owlWidth + 28;
         var textWidth = showOwl ? Math.Max(1, contentWidth - owlWidth - 2) : contentWidth;
@@ -718,8 +721,11 @@ internal static class NowPlayingPanel
         return OwlLine.Styled($"{plain}{new string(' ', padding)}", $"{markup}{new string(' ', padding)}");
     }
 
-    private static OwlExpression OwlExpressionForFrame(int frame)
+    private static OwlExpression OwlExpressionForFrame(int frame, PlaybackStatus status)
     {
+        if (status != PlaybackStatus.Playing)
+            return OwlExpression.Blink;
+
         var cycle = frame % 120;
         if (cycle is >= 88 and <= 112)
             return OwlExpression.Sleep;

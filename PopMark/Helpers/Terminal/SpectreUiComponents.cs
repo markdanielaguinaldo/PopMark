@@ -50,7 +50,7 @@ internal static class SplashScreen
 internal static class SplashCanvas
 {
     private const string Dim = "grey23";
-    private const int ContentLeft = 3;
+    private const int TerminalContentOrigin = 2;
     private const int VolumeSliderColumn = 3;
     private const int VolumeSliderTrackOffset = 4;
     private const int VolumeSliderTrackWidth = 13;
@@ -73,10 +73,10 @@ internal static class SplashCanvas
 
     public static SplashHitboxes ResolveHitboxes(int terminalWidth, int splashHeight, PlayerSnapshot snapshot)
     {
-        if (terminalWidth < 4 || splashHeight < 3)
+        if (terminalWidth < 3 || splashHeight < 3)
             return new SplashHitboxes(null, null);
 
-        var width = Math.Max(1, terminalWidth - 4);
+        var width = Math.Max(1, terminalWidth - 2);
         var height = Math.Max(1, splashHeight - 2);
         var layout = ResolveHeroLayout(frame: 0, width, height, playbackMode: true, snapshot);
         var progressLine = layout.Art
@@ -88,14 +88,14 @@ internal static class SplashCanvas
             AudioBeaconLogo.TryResolveProgressRange(progressLine.Line, out var start, out var progressWidth))
         {
             progress = new SplashHitbox(
-                X: ContentLeft + layout.Column + start,
+                X: TerminalContentOrigin + layout.Column + start,
                 Y: 2 + layout.Top + progressLine.Row,
                 Width: progressWidth);
         }
 
         var volume = height >= 18
             ? new SplashHitbox(
-                X: ContentLeft + VolumeSliderColumn + VolumeSliderTrackOffset,
+                X: TerminalContentOrigin + VolumeSliderColumn + VolumeSliderTrackOffset,
                 Y: 2 + height - 2,
                 Width: VolumeSliderTrackWidth)
             : null;
@@ -159,7 +159,7 @@ internal static class SplashCanvas
         for (var row = 0; row < art.Length; row++)
         {
             for (var index = 0; index < art[row].Length; index++)
-                Put(cells, startRow + row, column + index, art[row][index], SplashOwlStyle(row, art[row][index]));
+                PutAnimated(cells, startRow + row, column + index, art[row][index], SplashOwlStyle(row, art[row][index]));
         }
     }
 
@@ -228,7 +228,7 @@ internal static class SplashCanvas
             var column = Math.Clamp(width * x / 100, 1, Math.Max(1, width - 2));
             var mark = marks[(frame / 2 + row + column) % marks.Length];
             if (mark != ' ')
-                Put(cells, row, column, mark, pulse);
+                PutAnimated(cells, row, column, mark, pulse);
         }
     }
 
@@ -320,7 +320,7 @@ internal static class SplashCanvas
         {
             var character = text[i];
             var style = AudioBeaconLogo.StyleFor(frame, tapeRow, i, character, text);
-            Put(cells, row, column + i, character, style);
+            PutAnimated(cells, row, column + i, character, style);
         }
     }
 
@@ -440,6 +440,20 @@ internal static class SplashCanvas
 
         cells[row, column] = new SplashCell(character, style);
     }
+
+    private static void PutAnimated(SplashCell[,] cells, int row, int column, char character, string style)
+    {
+        if (!IsInsideContentArea(cells, row, column))
+            return;
+
+        cells[row, column] = new SplashCell(character, style);
+    }
+
+    private static bool IsInsideContentArea(SplashCell[,] cells, int row, int column) =>
+        row >= 0 &&
+        row < cells.GetLength(0) &&
+        column >= 0 &&
+        column < cells.GetLength(1);
 
     private static string BuildMarkupRow(SplashCell[,] cells, int row)
     {

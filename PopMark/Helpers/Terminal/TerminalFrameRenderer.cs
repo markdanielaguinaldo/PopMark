@@ -55,7 +55,10 @@ internal static class TerminalFrameRenderer
         var mainHeight = context.MiniMode ? height : Math.Max(1, height - 1);
         var normalized = context with { Width = width, Height = height };
         var mainContext = normalized with { Height = mainHeight };
-        var lines = RenderToLines(AppLayout.Render(mainContext), width, mainHeight);
+        var splashFrame = context.SplashMode && !context.MiniMode;
+        var lines = splashFrame
+            ? RenderSplashContentToLines(mainContext, width, mainHeight)
+            : RenderToLines(AppLayout.Render(mainContext), width, mainHeight);
         UpdateHitboxes(mainContext);
 
         if (Console.IsOutputRedirected)
@@ -75,23 +78,15 @@ internal static class TerminalFrameRenderer
         if (fullPaint)
             output.Append("\u001b[H\u001b[2J");
 
-        for (var i = 0; i < lines.Count; i++)
-        {
-            var changed = fullPaint ||
-                          i >= _lastRenderedLines!.Count ||
-                          !string.Equals(lines[i], _lastRenderedLines[i], StringComparison.Ordinal);
-            if (!changed)
-                continue;
-
-            output.Append($"\u001b[{i + 1};1H");
-            output.Append(TerminalText.PadAnsiAware(lines[i], width));
-            output.Append("\u001b[K");
-        }
+        if (splashFrame)
+            AppendSplashContentBuffer(output, lines, width, mainHeight);
+        else
+            AppendFrameBuffer(output, lines, width);
 
         if (renderInput && !context.MiniMode && !context.SplashMode)
             AppendInputLine(output, normalized);
 
-        if (context.SplashMode)
+        if (splashFrame)
         {
             AppendClearLine(output, height, width);
             AppendSplashBorder(output, width, mainHeight);
@@ -209,6 +204,44 @@ internal static class TerminalFrameRenderer
         _lastPlaylistHitboxes = Array.Empty<PlaylistHitbox>();
     }
 
+    private static void AppendFrameBuffer(StringBuilder output, IReadOnlyList<string> lines, int width)
+    {
+        for (var i = 0; i < lines.Count; i++)
+        {
+            output.Append($"\u001b[{i + 1};1H");
+            output.Append(TerminalText.PadAnsiAware(lines[i], width));
+            output.Append("\u001b[K");
+        }
+    }
+
+    private static IReadOnlyList<string> RenderSplashContentToLines(RenderContext context, int terminalWidth, int mainHeight)
+    {
+        var contentWidth = Math.Max(0, terminalWidth - 2);
+        var contentHeight = Math.Max(0, mainHeight - 2);
+        if (contentWidth <= 0 || contentHeight <= 0)
+            return Array.Empty<string>();
+
+        return RenderToLines(
+            SplashCanvas.Render(context.AnimationFrame, SplashScreen.CurrentVersion, contentWidth, contentHeight, context.Snapshot),
+            contentWidth,
+            contentHeight);
+    }
+
+    private static void AppendSplashContentBuffer(StringBuilder output, IReadOnlyList<string> lines, int terminalWidth, int mainHeight)
+    {
+        var contentWidth = Math.Max(0, terminalWidth - 2);
+        var contentHeight = Math.Max(0, mainHeight - 2);
+        if (contentWidth <= 0 || contentHeight <= 0)
+            return;
+
+        for (var i = 0; i < contentHeight; i++)
+        {
+            var line = i < lines.Count ? lines[i] : string.Empty;
+            output.Append($"\u001b[{i + 2};2H");
+            output.Append(TerminalText.PadAnsiAware(line, contentWidth));
+        }
+    }
+
     private static void AppendInputLine(StringBuilder output, RenderContext context)
     {
         var width = context.Width > 0 ? context.Width : 80;
@@ -234,14 +267,21 @@ internal static class TerminalFrameRenderer
         if (width < 2 || height < 2)
             return;
 
-        var horizontal = new string('─', Math.Max(0, width - 2));
+        var horizontalWidth = Math.Max(0, width - 2);
+        var horizontal = new string('─', horizontalWidth);
         output.Append(TerminalStyles.AnsiAccent);
-        output.Append($"\u001b[1;1H╭{horizontal}╮");
+        output.Append("\u001b[1;1H╭");
+        if (horizontalWidth > 0)
+            output.Append(horizontal);
+        output.Append($"\u001b[1;{width}H╮");
 
         for (var row = 2; row < height; row++)
             output.Append($"\u001b[{row};1H│\u001b[{row};{width}H│");
 
-        output.Append($"\u001b[{height};1H╰{horizontal}╯");
+        output.Append($"\u001b[{height};1H╰");
+        if (horizontalWidth > 0)
+            output.Append(horizontal);
+        output.Append($"\u001b[{height};{width}H╯");
         output.Append(TerminalStyles.Reset);
     }
 

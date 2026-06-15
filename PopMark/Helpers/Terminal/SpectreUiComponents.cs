@@ -142,12 +142,12 @@ internal static class SplashCanvas
         if (width < 56 || height < 16)
             return;
 
-        AddRightOwl(cells, Math.Max(4, height / 2 - 2), Math.Max(0, width - 12));
+        AddRightOwl(cells, Math.Max(4, height / 2 - 2), Math.Max(0, width - 12), frame);
     }
 
-    private static void AddRightOwl(SplashCell[,] cells, int startRow, int column)
+    private static void AddRightOwl(SplashCell[,] cells, int startRow, int column, int frame)
     {
-        const string eyes = "o,o";
+        var eyes = SplashOwlEyesForFrame(frame);
         var art = new[]
         {
             " ^...^ ",
@@ -171,6 +171,18 @@ internal static class SplashCanvas
             3 when character is 'w' or '-' => TerminalStyles.Secondary,
             _ => "grey70"
         };
+
+    private static string SplashOwlEyesForFrame(int frame)
+    {
+        var cycle = frame % 120;
+        if (cycle is >= 88 and <= 112)
+            return "z,z";
+
+        if (cycle is 21 or 22 or 45 or 46 or 69 or 70)
+            return "-,-";
+
+        return "o,o";
+    }
 
     private static void AddBottomRightDots(SplashCell[,] cells, int frame)
     {
@@ -316,8 +328,8 @@ internal static class SplashCanvas
         var minimumColumn = Math.Min(width, volumeEndColumn + 3);
         string[] variants =
         {
-            "SPACE Play/Pause   [ Prev   ] Next   TAB Playlist   Q Quit",
-            "SPACE Play   [ Prev   ] Next   TAB View   Q Quit",
+            "SPACE Play/Pause   [/] prev/next   TAB Playlist   Q Quit",
+            "SPACE Play   [/] prev/next   TAB View   Q Quit",
             "SPACE Play   TAB View   Q Quit"
         };
 
@@ -356,7 +368,7 @@ internal static class SplashCanvas
             return TerminalStyles.Accent;
         }
 
-        if (controls[index] is '[' or ']')
+        if (controls[index] is '[' or '/' or ']')
             return TerminalStyles.Secondary;
 
         return "white";

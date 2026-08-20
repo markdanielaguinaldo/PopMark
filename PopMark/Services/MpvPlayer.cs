@@ -102,28 +102,20 @@ public sealed class MpvPlayer
 
             PlaybackSessionStore.Register(process.Id, _ipcServerPath, track);
 
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    await process.StandardOutput.ReadToEndAsync(cancellationToken);
-                }
-                catch
-                {
-                }
-            }, cancellationToken);
+            // mpv writes its diagnostics to stdout, not stderr, so both streams feed the
+            // summary. Drain them concurrently or a full pipe buffer would stall playback.
+            var stdoutTask = ReadAllSafelyAsync(process.StandardOutput, cancellationToken);
+            var stderrTask = ReadAllSafelyAsync(process.StandardError, cancellationToken);
 
             var errorTask = Task.Run(async () =>
             {
-                try
-                {
-                    var error = await process.StandardError.ReadToEndAsync(cancellationToken);
-                    if (!string.IsNullOrWhiteSpace(error))
-                        LastError = SummarizeError(error);
-                }
-                catch
-                {
-                }
+                var captured = await Task.WhenAll(stdoutTask, stderrTask);
+                var combined = string.Join(
+                    "\n",
+                    captured.Where(text => !string.IsNullOrWhiteSpace(text)));
+
+                if (!string.IsNullOrWhiteSpace(combined))
+                    LastError = SummarizeError(combined);
             }, cancellationToken);
 
             lock (_syncRoot)
@@ -138,6 +130,19 @@ public sealed class MpvPlayer
                 ex);
         }
     }
+
+    private static Task<string> ReadAllSafelyAsync(StreamReader reader, CancellationToken cancellationToken) =>
+        Task.Run(async () =>
+        {
+            try
+            {
+                return await reader.ReadToEndAsync(cancellationToken);
+            }
+            catch
+            {
+                return string.Empty;
+            }
+        }, cancellationToken);
 
     private static string BuildChildPath(string? extraDirectory)
     {
@@ -295,7 +300,7 @@ public sealed class MpvPlayer
 
             shouldNotify = !_stopRequested;
             LastRunFailedImmediately = shouldNotify &&
-                DateTimeOffset.UtcNow - _startedAt < TimeSpan.FromSeconds(3);
+                DateTimeOffset.UtcNow - _startedAt < TimeSpan.FromSeconds(10);
             _process = null;
             _ipcName = null;
             _ipcServerPath = null;

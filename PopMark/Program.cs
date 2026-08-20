@@ -593,6 +593,17 @@ internal static class Program
             ConsoleHelper.Info($"Keeping playback alive for {options.Seconds} second(s).");
             await Task.Delay(TimeSpan.FromSeconds(options.Seconds));
 
+            // The track can die after it was queued, so report what the player ended up doing.
+            var finalSnapshot = player.CreateSnapshot();
+            if (finalSnapshot.Status == PlaybackStatus.Stopped)
+            {
+                // Read the reason first: stopping the queue overwrites LastMessage.
+                var failure = player.LastMessage;
+                await player.StopAsync(clearQueue: true);
+                ConsoleHelper.Error(failure);
+                return 3;
+            }
+
             await player.StopAsync(clearQueue: true);
             ConsoleHelper.Success("Playback test finished.");
             return 0;

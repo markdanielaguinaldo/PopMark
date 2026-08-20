@@ -60,6 +60,15 @@ tools clear yt-dlp                          forget a pinned path
 
 `popmark tools` also works from the shell without entering the UI.
 
+If a track will not play, run the non-interactive test and send the output:
+
+```powershell
+PopMark.exe play-test "https://www.youtube.com/watch?v=..." --seconds 10
+```
+
+It exits with code 3 and prints whatever mpv reported, such as an HTTP 403 from an
+out-of-date yt-dlp.
+
 ## Run
 
 ```powershell

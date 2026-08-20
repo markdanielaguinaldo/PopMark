@@ -1,4 +1,4 @@
-using PopMark.Models;
+﻿using PopMark.Models;
 using Spectre.Console;
 using Spectre.Console.Rendering;
 
@@ -1059,7 +1059,7 @@ internal static class HelpLine
 
         if (showHelp)
         {
-            text = "add <url/search> | splash/playlist views | goto <#|title> | shuffle | q quit";
+            text = "add <url/search> | splash/playlist views | goto <#|title> | shuffle | tools | q quit";
             return new Markup(StyledHelp(text, width, false));
         }
 

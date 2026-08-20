@@ -30,6 +30,35 @@ PopMark asks to install missing playback tools locally on first interactive run.
 
 Local tools are stored in `%LOCALAPPDATA%\PopMark\tools`.
 Queue state is stored in `%LOCALAPPDATA%\PopMark\queue.json`.
+Pinned tool paths are stored in `%LOCALAPPDATA%\PopMark\tools.json`.
+
+### Finding yt-dlp and mpv
+
+PopMark looks for each tool in this order:
+
+1. A path pinned with `tools set` (saved in `tools.json`)
+2. The `POPMARK_YTDLP_PATH` / `POPMARK_MPV_PATH` environment variables
+3. PopMark's own copy under `%LOCALAPPDATA%\PopMark\tools`
+4. `PATH`, plus the usual WinGet, Scoop, and Chocolatey shim folders
+5. A scan of the WinGet, Scoop, Chocolatey, and Program Files package folders
+
+That last step covers installs that never landed on `PATH`, such as a WinGet package folder
+like `%LOCALAPPDATA%\Microsoft\WinGet\Packages\yt-dlp.yt-dlp_Microsoft.Winget.Source_8wekyb3d8bbwe\yt-dlp.exe`.
+
+Because mpv shells out to yt-dlp itself, PopMark passes the resolved yt-dlp to mpv explicitly
+and adds its folder to the PATH the child process inherits. Without that, mpv reports
+`youtube-dl failed: not found or not enough permissions` even when PopMark loaded the playlist fine.
+
+Run `tools` at any time to see what PopMark resolved:
+
+```
+tools                                       show resolved paths and whether each tool runs
+tools install [yt-dlp|mpv|all]              install a private copy under %LOCALAPPDATA%\PopMark\tools
+tools set yt-dlp "C:\path\to\yt-dlp.exe"    pin a copy you already have
+tools clear yt-dlp                          forget a pinned path
+```
+
+`popmark tools` also works from the shell without entering the UI.
 
 ## Run
 
@@ -79,6 +108,7 @@ Update `Version`, `AssemblyVersion`, `FileVersion`, and `InformationalVersion` t
 | `play` / `pause` | Toggle playback |
 | `goto <#\|title>` | Scroll to a playlist song |
 | `shuffle` | Randomize the playlist |
+| `tools` | Show resolved playback tool paths, install or pin them |
 | `version` | Show the current app version |
 | `clear playlist` | Stop playback and empty the queue |
 | `clear` / `cls` | Redraw the screen |

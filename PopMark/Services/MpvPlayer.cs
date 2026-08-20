@@ -1,4 +1,4 @@
-using PopMark.Models;
+﻿using PopMark.Models;
 using System.Diagnostics;
 using System.IO.Pipes;
 using System.Runtime.InteropServices;
@@ -15,10 +15,18 @@ public sealed class MpvPlayer
     private string? _ipcServerPath;
     private int? _registeredProcessId;
     private bool _stopRequested;
+    private DateTimeOffset _startedAt;
+    private Task? _errorTask;
     private const int MinVolumePercent = 0;
     private const int MaxVolumePercent = 130;
 
     public event Func<Task>? PlaybackExited;
+
+    /// <summary>Last diagnostic mpv wrote to stderr, used to explain a track that died on start.</summary>
+    public string? LastError { get; private set; }
+
+    /// <summary>True when the last mpv process gave up almost immediately, which means it never really played.</summary>
+    public bool LastRunFailedImmediately { get; private set; }
 
     public bool IsRunning
     {
@@ -44,9 +52,12 @@ public sealed class MpvPlayer
             ? $@"\\.\pipe\{ipcId}"
             : Path.Combine(Path.GetTempPath(), ipcId);
 
+        var mpvPath = ToolLocator.ResolveExecutable("mpv") ?? "mpv";
+        var ytDlpPath = ToolLocator.ResolveExecutable("yt-dlp");
+
         var startInfo = new ProcessStartInfo
         {
-            FileName = ToolLocator.ResolveExecutable("mpv") ?? "mpv",
+            FileName = mpvPath,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
@@ -55,10 +66,20 @@ public sealed class MpvPlayer
 
         startInfo.ArgumentList.Add("--no-video");
         startInfo.ArgumentList.Add("--force-window=no");
-        startInfo.ArgumentList.Add("--really-quiet");
+        startInfo.ArgumentList.Add("--msg-level=all=error");
         startInfo.ArgumentList.Add($"--volume-max={MaxVolumePercent}");
         startInfo.ArgumentList.Add($"--volume={Math.Clamp(volumePercent, MinVolumePercent, MaxVolumePercent)}");
         startInfo.ArgumentList.Add($"--input-ipc-server={_ipcServerPath}");
+
+        // mpv resolves YouTube pages by shelling out to yt-dlp, and it only looks for it by
+        // name on PATH. Hand it the exact executable we resolved so an install outside PATH
+        // (a WinGet package folder, for example) still plays.
+        if (ytDlpPath is not null)
+        {
+            startInfo.ArgumentList.Add($"--script-opts=ytdl_hook-ytdl_path={ytDlpPath}");
+            startInfo.Environment["PATH"] = BuildChildPath(Path.GetDirectoryName(ytDlpPath));
+        }
+
         startInfo.ArgumentList.Add(track.Url);
 
         try
@@ -74,6 +95,9 @@ public sealed class MpvPlayer
                 _stopRequested = false;
                 _process = process;
                 _registeredProcessId = process.Id;
+                _startedAt = DateTimeOffset.UtcNow;
+                LastError = null;
+                LastRunFailedImmediately = false;
             }
 
             PlaybackSessionStore.Register(process.Id, _ipcServerPath, track);
@@ -83,17 +107,58 @@ public sealed class MpvPlayer
                 try
                 {
                     await process.StandardOutput.ReadToEndAsync(cancellationToken);
-                    await process.StandardError.ReadToEndAsync(cancellationToken);
                 }
                 catch
                 {
                 }
             }, cancellationToken);
+
+            var errorTask = Task.Run(async () =>
+            {
+                try
+                {
+                    var error = await process.StandardError.ReadToEndAsync(cancellationToken);
+                    if (!string.IsNullOrWhiteSpace(error))
+                        LastError = SummarizeError(error);
+                }
+                catch
+                {
+                }
+            }, cancellationToken);
+
+            lock (_syncRoot)
+            {
+                _errorTask = errorTask;
+            }
         }
         catch (System.ComponentModel.Win32Exception ex)
         {
-            throw new InvalidOperationException("mpv was not found. Install it and make sure it is available on PATH.", ex);
+            throw new InvalidOperationException(
+                $"mpv could not be started from '{mpvPath}'. Run 'tools' to see what PopMark resolved, or 'tools install mpv' to install a private copy.",
+                ex);
         }
+    }
+
+    private static string BuildChildPath(string? extraDirectory)
+    {
+        var current = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(extraDirectory))
+            return current;
+
+        var entries = current.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return entries.Contains(extraDirectory, StringComparer.OrdinalIgnoreCase)
+            ? current
+            : string.Join(Path.PathSeparator, new[] { extraDirectory }.Concat(entries));
+    }
+
+    private static string SummarizeError(string error)
+    {
+        var lines = error
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(line => !line.StartsWith("[cplayer]", StringComparison.OrdinalIgnoreCase))
+            .TakeLast(3);
+
+        return string.Join(" ", lines);
     }
 
     public Task PauseAsync(CancellationToken cancellationToken = default) =>
@@ -220,17 +285,26 @@ public sealed class MpvPlayer
     private async Task OnProcessExitedAsync(Process exitedProcess)
     {
         var shouldNotify = false;
+        Task? errorTask;
         lock (_syncRoot)
         {
             if (!ReferenceEquals(_process, exitedProcess))
                 return;
 
+            errorTask = _errorTask;
+
             shouldNotify = !_stopRequested;
+            LastRunFailedImmediately = shouldNotify &&
+                DateTimeOffset.UtcNow - _startedAt < TimeSpan.FromSeconds(3);
             _process = null;
             _ipcName = null;
             _ipcServerPath = null;
             _registeredProcessId = null;
         }
+
+        // Give the stderr reader a moment so LastError is populated before anyone reads it.
+        if (errorTask is not null)
+            await Task.WhenAny(errorTask, Task.Delay(500));
 
         PlaybackSessionStore.Unregister(exitedProcess.Id);
 

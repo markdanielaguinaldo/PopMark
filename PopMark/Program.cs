@@ -1,4 +1,4 @@
-using PopMark.Helpers;
+﻿using PopMark.Helpers;
 using PopMark.Models;
 using PopMark.Services;
 using Spectre.Console;
@@ -20,6 +20,13 @@ internal static class Program
         if (IsVersionRequest(args))
         {
             Console.WriteLine(VersionDisplay());
+            return 0;
+        }
+
+        if (args.Length > 0 && IsToolsCommand(args[0]))
+        {
+            var toolsMessage = await HandleToolsCommandAsync(new DependencyInstaller(), args, interactive: false);
+            Console.WriteLine(toolsMessage);
             return 0;
         }
 
@@ -312,6 +319,12 @@ internal static class Program
                 player.LastMessage = VersionDisplay();
                 return false;
 
+            case "tools":
+            case "tool":
+            case "doctor":
+                player.LastMessage = await HandleToolsCommandAsync(dependencies, args);
+                return false;
+
             case "add":
                 if (!TryResolveAddTarget(args, out var target))
                 {
@@ -408,6 +421,143 @@ internal static class Program
         return command.Length <= maxLength
             ? command
             : $"{command[..maxLength]}...";
+    }
+
+    private static bool IsToolsCommand(string command) =>
+        command.Equals("tools", StringComparison.OrdinalIgnoreCase) ||
+        command.Equals("tool", StringComparison.OrdinalIgnoreCase) ||
+        command.Equals("doctor", StringComparison.OrdinalIgnoreCase);
+
+    private const string ToolsUsage =
+        "Usage: tools | tools install [yt-dlp|mpv|all] | tools set <tool> <path> | tools clear <tool>";
+
+    private static async Task<string> HandleToolsCommandAsync(
+        DependencyInstaller dependencies,
+        string[] args,
+        bool interactive = true)
+    {
+        var action = args.Length > 1 ? args[1].ToLowerInvariant() : "status";
+
+        switch (action)
+        {
+            case "status":
+            case "list":
+            case "show":
+                return ReportTools(dependencies, interactive);
+
+            case "install":
+            case "repair":
+            case "fix":
+            {
+                var requested = args.Length > 2 ? args[2] : "all";
+                var targets = requested.Equals("all", StringComparison.OrdinalIgnoreCase)
+                    ? dependencies.DependencyNames
+                    : new[] { requested };
+
+                var messages = new List<string>();
+                foreach (var target in targets)
+                {
+                    try
+                    {
+                        messages.Add(await InstallToolAsync(dependencies, target, interactive));
+                    }
+                    catch (Exception ex)
+                    {
+                        messages.Add($"Installing {target} failed: {ex.Message}");
+                    }
+                }
+
+                return string.Join(" ", messages);
+            }
+
+            case "set":
+            case "use":
+            case "pin":
+            {
+                if (args.Length < 4)
+                    return "Usage: tools set <yt-dlp|mpv> <full path to the executable>";
+
+                var toolName = args[2];
+                var path = string.Join(" ", args.Skip(3)).Trim().Trim('"');
+                if (!File.Exists(path))
+                    return $"No file at {path}.";
+
+                if (!ToolLocator.IsRunnable(path))
+                    return $"{path} exists but did not run. Point at the executable itself, or use 'tools install {toolName}'.";
+
+                ToolLocator.SetOverride(toolName, path);
+                return $"PopMark will use {path} for {toolName}.";
+            }
+
+            case "clear":
+            case "unset":
+            case "reset":
+            {
+                if (args.Length < 3)
+                    return "Usage: tools clear <yt-dlp|mpv>";
+
+                ToolLocator.SetOverride(args[2], null);
+                return $"Cleared the saved path for {args[2]}.";
+            }
+
+            default:
+                return ToolsUsage;
+        }
+    }
+
+    private static async Task<string> InstallToolAsync(DependencyInstaller dependencies, string toolName, bool interactive)
+    {
+        if (!interactive)
+            return await dependencies.InstallToManagedPathAsync(toolName);
+
+        var message = string.Empty;
+        await AnsiConsole.Status()
+            .Spinner(Spinner.Known.Dots)
+            .SpinnerStyle(Style.Parse("pink1"))
+            .StartAsync($"Installing {toolName} into {ToolLocator.ToolRoot}...", async _ =>
+            {
+                message = await dependencies.InstallToManagedPathAsync(toolName);
+            });
+
+        return message;
+    }
+
+    private static string ReportTools(DependencyInstaller dependencies, bool interactive)
+    {
+        var statuses = dependencies.DescribeTools();
+        var lines = statuses.Select(status =>
+        {
+            var state = status.Path is null
+                ? "NOT FOUND"
+                : status.Runnable ? "ok" : "found but will not run";
+            var pin = status.PinnedPath is null ? string.Empty : " (pinned)";
+            return $"{status.DisplayName}: {status.Path ?? "-"} [{state}]{pin}";
+        }).ToList();
+
+        if (!interactive)
+        {
+            lines.Add($"PopMark tool folder: {ToolLocator.ToolRoot}");
+            lines.Add($"Saved paths: {ToolLocator.OverrideFilePath}");
+            lines.Add(ToolsUsage);
+            return string.Join(Environment.NewLine, lines);
+        }
+
+        ConsoleHelper.LeaveInteractiveScreen();
+        AnsiConsole.WriteLine();
+        foreach (var line in lines)
+            AnsiConsole.MarkupLine($"[deepskyblue1]{Markup.Escape(line)}[/]");
+
+        AnsiConsole.MarkupLine($"[grey]PopMark tool folder: {Markup.Escape(ToolLocator.ToolRoot)}[/]");
+        AnsiConsole.MarkupLine($"[grey]Saved paths: {Markup.Escape(ToolLocator.OverrideFilePath)}[/]");
+        AnsiConsole.MarkupLine($"[grey]{Markup.Escape(ToolsUsage)}[/]");
+        AnsiConsole.MarkupLine("[grey]Press Enter to return...[/]");
+        ConsoleHelper.RunWithStandardInput(() => Console.ReadLine());
+        ConsoleHelper.EnterInteractiveScreen();
+
+        var missing = statuses.Where(status => status.Path is null || !status.Runnable).ToList();
+        return missing.Count == 0
+            ? "Playback tools are ready."
+            : $"Not usable: {string.Join(", ", missing.Select(status => status.DisplayName))}. Type 'tools install' to fix.";
     }
 
     private static async Task<int> RunNonInteractiveAsync(

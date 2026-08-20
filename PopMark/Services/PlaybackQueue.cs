@@ -1,4 +1,4 @@
-using PopMark.Models;
+﻿using PopMark.Models;
 
 namespace PopMark.Services;
 
@@ -588,6 +588,21 @@ public sealed class PlaybackQueue
 
     private async Task AdvanceAfterTrackExitAsync()
     {
+        // A track that died on start means the toolchain is broken, not that the song ended.
+        // Advancing would burn through the whole queue in a couple of seconds, so stop and say why.
+        if (_mpv.LastRunFailedImmediately && !string.IsNullOrWhiteSpace(_mpv.LastError))
+        {
+            lock (_syncRoot)
+            {
+                _status = PlaybackStatus.Stopped;
+                ResetPositionLocked(startRunning: false);
+            }
+
+            LastMessage = $"Playback failed: {_mpv.LastError} Run 'tools' to check yt-dlp and mpv.";
+            NotifySnapshotChanged();
+            return;
+        }
+
         Track? next = null;
         int volumePercent;
         lock (_syncRoot)

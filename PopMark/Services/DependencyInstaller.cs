@@ -1,4 +1,4 @@
-using SharpCompress.Archives;
+﻿using SharpCompress.Archives;
 using SharpCompress.Common;
 using SharpCompress.Readers;
 using PopMark.Helpers;
@@ -20,6 +20,46 @@ public sealed class DependencyInstaller
 
     public bool ArePlaybackDependenciesAvailable() => GetMissingPlaybackDependencies().Count == 0;
 
+    public IReadOnlyList<string> DependencyNames =>
+        PlaybackDependencies.Select(dependency => dependency.CommandName).ToList();
+
+    /// <summary>Where each tool resolved from right now, for the 'tools' diagnostic.</summary>
+    public IReadOnlyList<ToolStatus> DescribeTools() =>
+        PlaybackDependencies
+            .Select(dependency =>
+            {
+                var path = ToolLocator.ResolveExecutable(dependency.CommandName);
+                return new ToolStatus(
+                    dependency.DisplayName,
+                    path,
+                    path is not null && ToolLocator.IsRunnable(path),
+                    ToolLocator.LoadOverrides().TryGetValue(dependency.CommandName, out var pinned) ? pinned : null);
+            })
+            .ToList();
+
+    /// <summary>Installs one tool into the enforced PopMark path even if a copy exists elsewhere.</summary>
+    public async Task<string> InstallToManagedPathAsync(string commandName, CancellationToken cancellationToken = default)
+    {
+        var dependency = PlaybackDependencies.FirstOrDefault(candidate =>
+            candidate.CommandName.Equals(commandName, StringComparison.OrdinalIgnoreCase));
+
+        if (dependency is null)
+            return $"Unknown tool: {commandName}. Known tools: {string.Join(", ", DependencyNames)}.";
+
+        Directory.CreateDirectory(ToolLocator.ToolRoot);
+        await dependency.InstallAsync(cancellationToken);
+
+        // The pin makes the fresh copy win over whatever was found earlier, so a broken
+        // system install can never keep taking priority after a repair.
+        ToolLocator.SetOverride(dependency.CommandName, ToolLocator.ManagedExecutablePath(dependency.CommandName));
+        ToolLocator.RefreshPathFromEnvironment();
+
+        var resolved = ToolLocator.ResolveRunnableExecutable(dependency.CommandName);
+        return resolved is null
+            ? $"Installed {dependency.DisplayName} under {ToolLocator.ToolRoot}, but it still does not run."
+            : $"{dependency.DisplayName} is now installed at {resolved}.";
+    }
+
     public async Task<string> EnsurePlaybackDependenciesAsync(
         bool promptToInstall,
         bool confirmInstall = true,
@@ -30,13 +70,16 @@ public sealed class DependencyInstaller
             return "Playback dependencies are ready.";
 
         var missingNames = string.Join(", ", missing.Select(dependency => dependency.DisplayName));
+        var hint = $"Type 'tools install' to put a private copy under {ToolLocator.ToolRoot}, " +
+                   "or 'tools set <tool> <path>' if you already have one.";
+
         if (!promptToInstall)
-            return $"Missing playback dependencies: {missingNames}. Start PopMark interactively to install them locally.";
+            return $"Missing playback tool(s): {missingNames}. {hint}";
 
         if (confirmInstall && !ConsoleHelper.RunWithStandardInput(() =>
-                AnsiConsole.Confirm($"[yellow]Install missing playback tool(s) locally: {Markup.Escape(missingNames)}?[/]")))
+                AnsiConsole.Confirm($"[yellow]Install missing playback tool(s) into {Markup.Escape(ToolLocator.ToolRoot)}: {Markup.Escape(missingNames)}?[/]")))
         {
-            return $"Missing playback dependencies: {missingNames}.";
+            return $"Missing playback tool(s): {missingNames}. {hint}";
         }
 
         Directory.CreateDirectory(ToolLocator.ToolRoot);
@@ -52,22 +95,24 @@ public sealed class DependencyInstaller
                 });
         }
 
+        ToolLocator.Invalidate();
         ToolLocator.RefreshPathFromEnvironment();
         var stillMissing = GetMissingPlaybackDependencies();
         if (stillMissing.Count == 0)
             return $"Installed playback dependencies locally under {ToolLocator.ToolRoot}.";
 
-        return $"Install finished, but still not found: {string.Join(", ", stillMissing.Select(dependency => dependency.DisplayName))}.";
+        return $"Install finished, but still not usable: {string.Join(", ", stillMissing.Select(dependency => dependency.DisplayName))}. " +
+               "Run 'tools' to see what PopMark resolved.";
     }
 
     private static IReadOnlyList<PlaybackDependency> GetMissingPlaybackDependencies() =>
         PlaybackDependencies
-            .Where(dependency => ToolLocator.ResolveExecutable(dependency.CommandName) is null)
+            .Where(dependency => ToolLocator.ResolveRunnableExecutable(dependency.CommandName) is null)
             .ToList();
 
     private static async Task InstallYtDlpAsync(CancellationToken cancellationToken)
     {
-        var installDirectory = Path.Combine(ToolLocator.ToolRoot, "yt-dlp");
+        var installDirectory = ToolLocator.ManagedDirectory("yt-dlp");
         Directory.CreateDirectory(installDirectory);
 
         var destination = Path.Combine(installDirectory, "yt-dlp.exe");
@@ -81,7 +126,7 @@ public sealed class DependencyInstaller
     {
         var releaseAsset = await ResolveLatestMpvAssetAsync(cancellationToken);
         var archivePath = Path.Combine(ToolLocator.ToolRoot, "mpv.7z");
-        var installDirectory = Path.Combine(ToolLocator.ToolRoot, "mpv");
+        var installDirectory = ToolLocator.ManagedDirectory("mpv");
         var tempDirectory = Path.Combine(ToolLocator.ToolRoot, "mpv-extract");
 
         await DownloadFileAsync(releaseAsset.DownloadUrl, archivePath, cancellationToken);
@@ -183,4 +228,6 @@ public sealed class DependencyInstaller
         Func<CancellationToken, Task> InstallAsync);
 
     private sealed record MpvReleaseAsset(string Name, string DownloadUrl);
+
+    public sealed record ToolStatus(string DisplayName, string? Path, bool Runnable, string? PinnedPath);
 }

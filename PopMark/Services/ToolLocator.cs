@@ -8,6 +8,11 @@ namespace PopMark.Services;
 public static class ToolLocator
 {
     private static readonly string[] WindowsExecutableExtensions = { ".exe", ".cmd", ".bat", ".com" };
+
+    // PATHEXT puts .COM first, but a .com next to a .exe is usually a small console shim that
+    // relaunches the real binary as a child (mpv ships exactly that). Starting the shim would
+    // leave us holding a handle to the wrapper instead of the player, so prefer the .exe.
+    private static readonly string[] PreferredExtensionOrder = { ".EXE", ".COM", ".CMD", ".BAT" };
     private static readonly ConcurrentDictionary<string, string?> ResolvedPaths = new(StringComparer.OrdinalIgnoreCase);
     private static readonly ConcurrentDictionary<string, bool> RunnablePaths = new(StringComparer.OrdinalIgnoreCase);
     private static readonly object OverrideSync = new();
@@ -255,9 +260,12 @@ public static class ToolLocator
             if (!process.WaitForExit(5000))
                 return null;
 
+            // where.exe walks PATHEXT in its own order too, so re-rank before taking one.
             return output
                 .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .FirstOrDefault(IsUsableFile);
+                .Where(IsUsableFile)
+                .OrderBy(match => ExtensionRank(Path.GetExtension(match)))
+                .FirstOrDefault();
         }
         catch
         {
@@ -281,6 +289,7 @@ public static class ToolLocator
             var best = matches
                 .Where(IsUsableFile)
                 .OrderByDescending(ExtractVersion)
+                .ThenBy(match => ExtensionRank(Path.GetExtension(match)))
                 .ThenByDescending(File.GetLastWriteTimeUtc)
                 .FirstOrDefault();
 
@@ -443,6 +452,18 @@ public static class ToolLocator
             .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             ?? WindowsExecutableExtensions;
 
-        return extensions.Select(extension => commandName + extension);
+        // OrderBy is stable, so PATHEXT's own order still decides between equally ranked extensions.
+        return extensions
+            .OrderBy(ExtensionRank)
+            .Select(extension => commandName + extension);
+    }
+
+    private static int ExtensionRank(string extension)
+    {
+        var index = Array.FindIndex(
+            PreferredExtensionOrder,
+            candidate => candidate.Equals(extension, StringComparison.OrdinalIgnoreCase));
+
+        return index < 0 ? PreferredExtensionOrder.Length : index;
     }
 }

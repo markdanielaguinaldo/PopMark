@@ -79,6 +79,27 @@ bun install
 bun run start
 ```
 
+### Install the `popmark` command
+
+After building the portable package or the solution, install terminal shims:
+
+```powershell
+.\scripts\install-commands.ps1
+```
+
+The script writes `popmark.cmd`, `popmark-release.cmd`, and `popmark-debug.cmd` into
+`%USERPROFILE%\.local\bin`, adds that folder to your user `PATH` if needed, and points
+each command at the matching local build. Open a new terminal, then run:
+
+```powershell
+popmark            # portable release
+popmark-release    # framework-dependent Release build
+popmark-debug      # framework-dependent Debug build
+```
+
+The portable build must exist under `releases\` and the source builds under `builds\`.
+The script skips any build it cannot find.
+
 Force the retired C# terminal UI (deprecated, kept for one release as a fallback):
 
 ```powershell

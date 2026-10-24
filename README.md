@@ -57,16 +57,32 @@ You still need `yt-dlp` and `mpv`; PopMark can install both into
 
 ### Build from source
 
-Requirements:
-
-- Windows x64
-- .NET 9 SDK
-- Bun 1.3.14 or newer
+Requirements are installed automatically by the bootstrap on a fresh Windows x64 machine.
 
 ```powershell
 git clone https://github.com/markdanielaguinaldo/PopMark.git
 cd PopMark
+.\install.cmd
+```
 
+`install.cmd` runs `scripts/install.ps1`, which:
+
+- installs the .NET 9 SDK if no compatible SDK is present,
+- installs Bun if it is missing or older than 1.3.14,
+- runs `bun install` for the OpenTUI workspace,
+- builds the self-contained portable package,
+- installs managed `yt-dlp` and `mpv` if they are missing,
+- installs the `popmark` command.
+
+For unattended use:
+
+```powershell
+.\install.cmd /nopause -SkipPlaybackTools
+```
+
+Manual build, if you already have .NET 9 and Bun:
+
+```powershell
 dotnet build .\PopMark.sln --configuration Release
 dotnet run --project .\PopMark\PopMark.csproj
 ```

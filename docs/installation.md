@@ -30,8 +30,19 @@ affected.
 
 ## Building from source
 
-Install the [.NET 9 SDK](https://dotnet.microsoft.com/download) and
-[Bun](https://bun.sh), then:
+On a fresh Windows x64 machine, run the bootstrap:
+
+```powershell
+git clone https://github.com/markdanielaguinaldo/PopMark.git
+cd PopMark
+.\install.cmd
+```
+
+It installs the .NET 9 SDK and Bun if needed, runs `bun install`, builds the portable
+package, installs managed `yt-dlp` and `mpv` when missing, and installs the `popmark`
+command. Use `.\install.cmd /nopause -SkipPlaybackTools` for unattended setup.
+
+If you already have the .NET 9 SDK and Bun:
 
 ```powershell
 git clone https://github.com/markdanielaguinaldo/PopMark.git
@@ -45,10 +56,11 @@ dotnet run --project .\PopMark\PopMark.csproj
 For a release build:
 
 ```powershell
-dotnet build .\PopMark.sln --configuration Release
-cd ui
-bun run build
+.\scripts\build-portable.ps1
 ```
+
+`build-portable.ps1` also runs `bun install` before building, so a fresh clone does not
+need a separate frontend dependency step.
 
 The backend build output lands under `PopMark\bin\Release\net9.0\`; the frontend bundle
 lands under `ui\dist\`. The default launcher starts the OpenTUI frontend automatically.

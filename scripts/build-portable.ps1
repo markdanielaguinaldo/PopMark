@@ -13,13 +13,34 @@ $zip = Join-Path $releases "$name.zip"
 
 $bunCandidates = @(
     $env:POPMARK_BUN,
-    (Join-Path $env:APPDATA "npm\node_modules\bun\bin\bun.exe"),
-    (Join-Path $env:USERPROFILE ".bun\bin\bun.exe")
-) | Where-Object { $_ -and (Test-Path $_) }
+    (Join-Path $env:USERPROFILE ".bun\bin\bun.exe"),
+    (Join-Path $env:APPDATA "npm\node_modules\bun\bin\bun.exe")
+)
 
-$bun = $bunCandidates | Select-Object -First 1
+$bunCommand = Get-Command bun.exe -ErrorAction SilentlyContinue
+if ($bunCommand) { $bunCandidates += $bunCommand.Source }
+
+$bun = $bunCandidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
 if (-not $bun) {
-    throw "Bun executable not found. Set POPMARK_BUN or install Bun."
+    throw "Bun was not found. Run .\scripts\install.ps1, or install Bun from https://bun.sh."
+}
+
+$dotnetCommand = Get-Command dotnet -ErrorAction SilentlyContinue
+if (-not $dotnetCommand) {
+    throw "The .NET SDK was not found. Run .\scripts\install.ps1 to install it."
+}
+
+$sdkLines = & dotnet --list-sdks 2>$null
+$hasSdk9 = $false
+foreach ($line in $sdkLines) {
+    if ($line -match '^(\d+)\.' -and [int]$Matches[1] -ge 9) {
+        $hasSdk9 = $true
+        break
+    }
+}
+
+if (-not $hasSdk9) {
+    throw "The .NET 9 SDK was not found. Run .\scripts\install.ps1 to install it."
 }
 
 if (Test-Path $out) { Remove-Item $out -Recurse -Force }
@@ -27,9 +48,13 @@ if (Test-Path $zip) { Remove-Item $zip -Force }
 New-Item -ItemType Directory -Force $out | Out-Null
 New-Item -ItemType Directory -Force (Join-Path $out "ui\dist") | Out-Null
 
-Write-Host "Building OpenTUI bundle..."
+Write-Host "Installing frontend dependencies..."
 Push-Location $ui
 try {
+    & $bun install --frozen-lockfile
+    if ($LASTEXITCODE -ne 0) { throw "Frontend dependency installation failed." }
+
+    Write-Host "Building OpenTUI bundle..."
     & $bun run build
     if ($LASTEXITCODE -ne 0) { throw "Frontend build failed." }
 } finally {
@@ -52,6 +77,10 @@ Write-Host "Copying UI assets and runtime..."
 Copy-Item (Join-Path $ui "dist\*") (Join-Path $out "ui\dist") -Recurse -Force
 
 $nativeSource = Join-Path $ui "node_modules\@opentui\core-win32-x64"
+if (-not (Test-Path (Join-Path $nativeSource "opentui.dll"))) {
+    throw "The OpenTUI native package is missing. Run 'bun install' in the ui folder."
+}
+
 $nativeTarget = Join-Path $out "ui\node_modules\@opentui\core-win32-x64"
 New-Item -ItemType Directory -Force $nativeTarget | Out-Null
 Copy-Item (Join-Path $nativeSource "*") $nativeTarget -Recurse -Force

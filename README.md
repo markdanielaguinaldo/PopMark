@@ -168,8 +168,8 @@ same queue and tool settings.
 
 | Artifact | Purpose | Status |
 | --- | --- | --- |
-| `PopMark-1.1.2-OpenTUI-win-x64-portable.zip` | Current OpenTUI build with bundled Bun and UI assets | Active |
-| `PopMark-1.1.2-legacy-win-x64.zip` | Backup of the original C# terminal UI, built from tag `v1.1.2` | Deprecated |
+| [`PopMark-1.1.2-OpenTUI-win-x64-portable.zip`](https://github.com/markdanielaguinaldo/PopMark/releases/tag/v1.1.2-opentui) | Current OpenTUI build with bundled Bun and UI assets | Active |
+| [`PopMark-1.1.2-legacy-win-x64.zip`](https://github.com/markdanielaguinaldo/PopMark/releases/tag/v1.1.2-legacy) | Backup of the original C# terminal UI, built from tag `v1.1.2` | Deprecated |
 
 The legacy archive is intentionally self-contained. It is provided so the previous
 interface remains runnable, not as a supported alternative.

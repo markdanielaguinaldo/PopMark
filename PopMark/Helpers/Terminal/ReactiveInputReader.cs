@@ -26,7 +26,7 @@ internal static class ReactiveInputReader
             return Console.ReadLine()?.Trim() ?? string.Empty;
         }
 
-        var buffer = new StringBuilder();
+        var editor = new CommandLineEditor(commandHistory);
         var animationFrame = 0;
         var lastMainRefresh = DateTimeOffset.MinValue;
         var lastStateCheck = DateTimeOffset.MinValue;
@@ -49,13 +49,14 @@ internal static class ReactiveInputReader
                 height,
                 snapshotProvider(),
                 noticeProvider(),
-                buffer.ToString(),
+                editor.Text,
                 helpModeProvider?.Invoke() == true,
                 controlsModeProvider?.Invoke() == true,
                 miniModeProvider?.Invoke() == true,
                 animationFrame,
                 queueScrollOffsetProvider?.Invoke() ?? 0,
-                splashModeProvider?.Invoke() == true);
+                splashModeProvider?.Invoke() == true,
+                InputCaret: editor.Caret);
             TerminalFrameRenderer.Render(context, forceFullPaint, renderInput);
             lastMainRefresh = DateTimeOffset.UtcNow;
             lastStateCheck = lastMainRefresh;
@@ -78,7 +79,33 @@ internal static class ReactiveInputReader
             var (width, height) = TerminalHost.GetWindowSize();
             trackedWidth = width;
             trackedHeight = height;
-            TerminalFrameRenderer.RenderInputLine(width, height, buffer.ToString());
+            TerminalFrameRenderer.RenderInputLine(width, height, editor.Text, editor.Caret);
+        }
+
+        bool HandleEditCommand(string command)
+        {
+            var changed = command switch
+            {
+                "__edit-left" => editor.MoveLeft(),
+                "__edit-right" => editor.MoveRight(),
+                "__edit-home" => editor.MoveHome(),
+                "__edit-end" => editor.MoveEnd(),
+                "__edit-delete" => editor.Delete(),
+                "__history-up" => editor.HistoryPrevious(),
+                "__history-down" => editor.HistoryNext(),
+                _ => false
+            };
+
+            if (command.StartsWith("__edit-", StringComparison.Ordinal) ||
+                command.StartsWith("__history-", StringComparison.Ordinal))
+            {
+                if (changed)
+                    RefreshInput();
+
+                return true;
+            }
+
+            return false;
         }
 
         RefreshMain(renderInput: true, forceFullPaint: true);
@@ -126,8 +153,11 @@ internal static class ReactiveInputReader
 
             var key = ReadInputKey();
 
-            if (TryResolveTerminalCommand(key, buffer.Length == 0, out var terminalCommand))
+            if (TryResolveTerminalCommand(key, editor.IsEmpty, out var terminalCommand))
             {
+                if (HandleEditCommand(terminalCommand))
+                    continue;
+
                 if (string.IsNullOrWhiteSpace(terminalCommand))
                     continue;
 
@@ -140,70 +170,57 @@ internal static class ReactiveInputReader
             if (IsTabKey(key))
                 return ReturnWithSize("__toggle-view", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
 
-            if (buffer.Length == 0)
-            {
-                if (IsSpaceKey(key))
-                    return ReturnWithSize("play", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
-
-                if (key.KeyChar == '-')
-                    return ReturnWithSize("__volume-down", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
-
-                if (key.KeyChar == '=')
-                    return ReturnWithSize("__volume-up", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
-
-                if (key.KeyChar == '[')
-                    return ReturnWithSize("__previous-track", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
-
-                if (key.KeyChar == ']')
-                    return ReturnWithSize("__next-track", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
-
-                switch (key.Key)
-                {
-                    case ConsoleKey.RightArrow:
-                        return ReturnWithSize("__seek-forward", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
-                    case ConsoleKey.LeftArrow:
-                        return ReturnWithSize("__seek-back", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
-                    case ConsoleKey.PageUp:
-                        return ReturnWithSize("__queue-page-up", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
-                    case ConsoleKey.PageDown:
-                        return ReturnWithSize("__queue-page-down", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
-                    case ConsoleKey.UpArrow:
-                        return ReturnWithSize("__queue-up", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
-                    case ConsoleKey.DownArrow:
-                        return ReturnWithSize("__queue-down", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
-                    case ConsoleKey.Home:
-                        return ReturnWithSize("__queue-home", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
-                    case ConsoleKey.End:
-                        return ReturnWithSize("__queue-end", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
-                    case ConsoleKey.Oem2 when key.KeyChar == '?':
-                        return ReturnWithSize("help", ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
-                }
-            }
+            if (editor.IsEmpty && ResolveEmptyBufferShortcut(key) is { } shortcut)
+                return ReturnWithSize(shortcut, ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
 
             if (IsEnterKey(key))
-                return ReturnWithSize(buffer.ToString().Trim(), ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
+                return ReturnWithSize(editor.Text.Trim(), ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
 
             if (IsEscapeKey(key))
                 return ReturnWithSize(string.Empty, ref lastWidth, ref lastHeight, trackedWidth, trackedHeight);
 
             if (IsBackspaceKey(key))
             {
-                if (buffer.Length > 0)
-                {
-                    buffer.Length--;
+                if (editor.Backspace())
                     RefreshInput();
-                }
 
                 continue;
             }
 
+            if (!editor.IsEmpty)
+            {
+                var moved = key.Key switch
+                {
+                    ConsoleKey.LeftArrow => editor.MoveLeft(),
+                    ConsoleKey.RightArrow => editor.MoveRight(),
+                    ConsoleKey.Home => editor.MoveHome(),
+                    ConsoleKey.End => editor.MoveEnd(),
+                    ConsoleKey.Delete => editor.Delete(),
+                    ConsoleKey.UpArrow => editor.HistoryPrevious(),
+                    ConsoleKey.DownArrow => editor.HistoryNext(),
+                    _ => false
+                };
+
+                if (moved)
+                {
+                    RefreshInput();
+                    continue;
+                }
+
+                if (key.Key is ConsoleKey.LeftArrow or ConsoleKey.RightArrow or
+                    ConsoleKey.Home or ConsoleKey.End or ConsoleKey.Delete or
+                    ConsoleKey.UpArrow or ConsoleKey.DownArrow)
+                {
+                    continue;
+                }
+            }
+
             if (!char.IsControl(key.KeyChar))
             {
-                buffer.Append(key.KeyChar);
+                editor.Insert(key.KeyChar);
                 RefreshInput();
             }
         }
-
     }
 
     private static string ReturnWithSize(string value, ref int lastWidth, ref int lastHeight, int trackedWidth, int trackedHeight)
@@ -211,6 +228,49 @@ internal static class ReactiveInputReader
         lastWidth = trackedWidth;
         lastHeight = trackedHeight;
         return value;
+    }
+
+    /// <summary>
+    /// Maps a key to a playback/view command when the command buffer is empty.
+    /// Returns <see langword="null"/> for keys that should be inserted as text.
+    /// </summary>
+    internal static string? ResolveEmptyBufferShortcut(ConsoleKeyInfo key)
+    {
+        if (IsSpaceKey(key))
+            return "play";
+
+        if (key.KeyChar == '-')
+            return "__volume-down";
+
+        if (key.KeyChar == '=')
+            return "__volume-up";
+
+        if (key.KeyChar == '[')
+            return "__previous-track";
+
+        if (key.KeyChar == ']')
+            return "__next-track";
+
+        return key.Key switch
+        {
+            ConsoleKey.RightArrow => "__seek-forward",
+            ConsoleKey.LeftArrow => "__seek-back",
+            ConsoleKey.PageUp => "__queue-page-up",
+            ConsoleKey.PageDown => "__queue-page-down",
+            ConsoleKey.UpArrow => "__queue-up",
+            ConsoleKey.DownArrow => "__queue-down",
+            ConsoleKey.Home => "__queue-home",
+            ConsoleKey.End => "__queue-end",
+            ConsoleKey.Oem2 when key.KeyChar == '?' => "help",
+            _ => null
+        };
+    }
+
+    /// <summary>Test seam for the escape-sequence router.</summary>
+    internal static string ResolveTerminalSequence(string sequence, bool shortcutsEnabled)
+    {
+        _ = TryResolveCsiShortcutCommand(sequence, shortcutsEnabled, out var command);
+        return command;
     }
 
     private static bool HasInputKeyAvailable() =>
@@ -305,8 +365,21 @@ internal static class ReactiveInputReader
     {
         command = string.Empty;
         if (!shortcutsEnabled)
-            return sequence.StartsWith("\u001b[", StringComparison.Ordinal) ||
-                   sequence.StartsWith("\u001bO", StringComparison.Ordinal);
+        {
+            command = sequence switch
+            {
+                "\u001b[A" => "__history-up",
+                "\u001b[B" => "__history-down",
+                "\u001b[C" or "\u001b[1;2C" => "__edit-right",
+                "\u001b[D" or "\u001b[1;2D" => "__edit-left",
+                "\u001b[H" or "\u001b[1~" or "\u001bOH" => "__edit-home",
+                "\u001b[F" or "\u001b[4~" or "\u001bOF" => "__edit-end",
+                "\u001b[3~" => "__edit-delete",
+                _ => string.Empty
+            };
+
+            return true;
+        }
 
         command = sequence switch
         {

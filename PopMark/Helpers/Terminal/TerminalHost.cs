@@ -123,6 +123,18 @@ internal static class TerminalHost
         }
     }
 
+    public static void HideCursor()
+    {
+        try
+        {
+            if (!Console.IsOutputRedirected)
+                Console.Write("\u001b[?25l");
+        }
+        catch
+        {
+        }
+    }
+
     public static void ResetCursorStyle()
     {
         try

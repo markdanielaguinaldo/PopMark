@@ -1,19 +1,23 @@
+using PopMark.Helpers.Terminal.Components;
+using PopMark.Helpers.Terminal.Rendering;
 using PopMark.Models;
-using Spectre.Console;
-using Spectre.Console.Rendering;
-using System.Text;
 
 namespace PopMark.Helpers.Terminal;
 
+/// <summary>
+/// Application-facing terminal façade. It builds the component tree, paints into
+/// an in-memory <see cref="ScreenBuffer"/> and asks <see cref="ScreenComposer"/>
+/// to emit only the cells that changed since the previous frame.
+/// </summary>
 internal static class TerminalFrameRenderer
 {
-    private static IReadOnlyList<string>? _lastRenderedLines;
-    private static int _lastRenderedWidth;
-    private static int _lastRenderedHeight;
-    private static int _lastRenderedTerminalHeight;
-    private static ProgressHitbox? _lastProgressHitbox;
-    private static ProgressHitbox? _lastVolumeHitbox;
-    private static IReadOnlyList<PlaylistHitbox> _lastPlaylistHitboxes = Array.Empty<PlaylistHitbox>();
+    private static readonly UiTheme Theme = UiTheme.Default;
+
+    private static ScreenBuffer? _previousFrame;
+    private static HitRegistry _lastHits = new();
+    private static UiCaret? _lastCaret;
+    private static int _frameWidth;
+    private static int _frameHeight;
 
     public static void DrawCommandCenter(PlayerSnapshot snapshot, string notice, bool showHelp = false, int queueScrollOffset = 0, bool showControls = false, bool showSplash = false)
     {
@@ -52,103 +56,131 @@ internal static class TerminalFrameRenderer
     {
         var width = context.Width > 0 ? context.Width : 80;
         var height = context.Height > 0 ? context.Height : 24;
-        var mainHeight = context.MiniMode ? height : Math.Max(1, height - 1);
         var normalized = context with { Width = width, Height = height };
-        var mainContext = normalized with { Height = mainHeight };
-        var splashFrame = context.SplashMode && !context.MiniMode;
-        var lines = splashFrame
-            ? RenderSplashContentToLines(mainContext, width, mainHeight)
-            : RenderToLines(AppLayout.Render(mainContext), width, mainHeight);
-        UpdateHitboxes(mainContext);
+        var buffer = new ScreenBuffer(width, height);
+        var hits = new HitRegistry();
+        var uiContext = new UiRenderContext(
+            normalized,
+            Theme,
+            hits,
+            TimeSpan.FromMilliseconds(Math.Max(0, normalized.AnimationFrame) * 110d));
+
+        AppLayout.Create(normalized).Render(buffer, new UiRect(0, 0, width, height), uiContext);
+
+        _lastHits = hits;
+        _lastCaret = uiContext.Caret;
 
         if (Console.IsOutputRedirected)
         {
-            Console.Write(string.Join(Environment.NewLine, lines));
-            Remember(lines, width, mainHeight, height);
+            Console.Write(buffer.ToPlainText());
+            _previousFrame = null;
             return;
         }
 
         var fullPaint = forceFullPaint ||
-                        _lastRenderedLines is null ||
-                        _lastRenderedWidth != width ||
-                        _lastRenderedHeight != mainHeight ||
-                        _lastRenderedTerminalHeight != height;
-        var output = new StringBuilder();
-        output.Append("\u001b[?25l\u001b[?7l");
-        if (fullPaint)
-            output.Append("\u001b[H\u001b[2J");
+                        _previousFrame is null ||
+                        _frameWidth != width ||
+                        _frameHeight != height;
+        var showCursor = !normalized.MiniMode && !normalized.SplashMode && uiContext.Caret is not null;
+        var output = ScreenComposer.Compose(
+            _previousFrame,
+            buffer,
+            fullPaint,
+            useColor: true,
+            cursorRow: showCursor ? uiContext.Caret!.Value.Y : null,
+            cursorColumn: showCursor ? uiContext.Caret!.Value.X : null,
+            showCursor: showCursor);
 
-        if (splashFrame)
-            AppendSplashContentBuffer(output, lines, width, mainHeight);
-        else
-            AppendFrameBuffer(output, lines, width);
+        Console.Write(output);
 
-        if (renderInput && !context.MiniMode && !context.SplashMode)
-            AppendInputLine(output, normalized);
-
-        if (splashFrame)
-        {
-            AppendClearLine(output, height, width);
-            AppendSplashBorder(output, width, mainHeight);
-        }
-
-        if (!context.MiniMode && !context.SplashMode && ResolveInputCursor(normalized) is { } cursor)
-            output.Append($"\u001b[{cursor.Row};{cursor.Column}H\u001b[?25h");
-
-        output.Append("\u001b[?7h");
-        Console.Write(output.ToString());
-        Remember(lines, width, mainHeight, height);
+        _previousFrame = buffer;
+        _frameWidth = width;
+        _frameHeight = height;
     }
 
-    public static void RenderInputLine(int terminalWidth, int terminalHeight, string input)
+    public static void RenderInputLine(int terminalWidth, int terminalHeight, string input, int caretIndex = -1)
     {
         if (Console.IsOutputRedirected)
             return;
 
         var width = terminalWidth > 0 ? terminalWidth : 80;
         var height = terminalHeight > 0 ? terminalHeight : 24;
-        var context = new RenderContext(
-            width,
-            height,
-            new PlayerSnapshot(
-                PlaybackStatus.Stopped,
-                null,
-                Array.Empty<Track>(),
-                Array.Empty<Track>(),
-                null,
-                100),
-            string.Empty,
-            input,
-            ShowHelp: false,
-            ShowControls: false,
-            MiniMode: false,
-            AnimationFrame: 0,
-            QueueScrollOffset: 0);
-        var output = new StringBuilder("\u001b[?25l\u001b[?7l");
-        AppendInputLine(output, context);
+        var caret = caretIndex < 0 ? input.Length : Math.Clamp(caretIndex, 0, input.Length);
 
-        if (ResolveInputCursor(context) is { } cursor)
-            output.Append($"\u001b[{cursor.Row};{cursor.Column}H\u001b[?25h");
+        if (_previousFrame is null || _frameWidth != width || _frameHeight != height)
+        {
+            Render(new RenderContext(
+                width,
+                height,
+                EmptySnapshot(),
+                string.Empty,
+                input,
+                ShowHelp: false,
+                ShowControls: false,
+                MiniMode: false,
+                AnimationFrame: 0,
+                QueueScrollOffset: 0,
+                InputCaret: caret), forceFullPaint: true);
+            return;
+        }
 
-        output.Append("\u001b[?7h");
-        Console.Write(output.ToString());
+        var contentWidth = LayoutMetrics.ContentWidth(width);
+        var leftMargin = LayoutMetrics.LeftMargin(width, contentWidth);
+        var row = new ScreenBuffer(width, 1, Theme.Page);
+        var rowContext = new UiRenderContext(
+            new RenderContext(
+                width,
+                height,
+                EmptySnapshot(),
+                string.Empty,
+                input,
+                ShowHelp: false,
+                ShowControls: false,
+                MiniMode: false,
+                AnimationFrame: 0,
+                QueueScrollOffset: 0,
+                InputCaret: caret),
+            Theme,
+            _lastHits,
+            TimeSpan.Zero);
+
+        new InputFieldComponent
+        {
+            Text = input,
+            CaretIndex = caret,
+            IsFocused = true
+        }.Render(row, new UiRect(leftMargin, 0, contentWidth, 1), rowContext);
+
+        var rowIndex = height - 1;
+        var output = ScreenComposer.ComposeRow(
+            _previousFrame.ExtractRow(rowIndex),
+            row,
+            terminalRow: height,
+            useColor: true,
+            cursorColumn: rowContext.Caret?.X,
+            showCursor: rowContext.Caret is not null);
+
+        Console.Write(output);
+        _previousFrame.ApplyRow(row, rowIndex);
+        _lastCaret = rowContext.Caret;
     }
 
     public static bool TryResolveProgressClick(int x, int y, PlayerSnapshot snapshot, out TimeSpan timestamp)
     {
         timestamp = TimeSpan.Zero;
-        if (_lastProgressHitbox is not { } hitbox ||
-            snapshot.Current?.Duration is not { TotalSeconds: > 0 } duration ||
-            y != hitbox.Y ||
-            x < hitbox.X ||
-            x >= hitbox.X + hitbox.Width)
+        if (!ToZeroBased(x, y, out var column, out var row))
+            return false;
+
+        var hitbox = _lastHits.Find(HitKind.Progress, column, row);
+        if (hitbox is not { } region ||
+            snapshot.Current?.Duration is not { TotalSeconds: > 0 } duration)
         {
             return false;
         }
 
-        var ratio = hitbox.Width <= 1
+        var ratio = region.Bounds.Width <= 1
             ? 0
-            : (double)(x - hitbox.X) / (hitbox.Width - 1);
+            : (double)(column - region.Bounds.X) / (region.Bounds.Width - 1);
         timestamp = TimeSpan.FromSeconds(duration.TotalSeconds * Math.Clamp(ratio, 0, 1));
         return true;
     }
@@ -156,260 +188,76 @@ internal static class TerminalFrameRenderer
     public static bool TryResolvePlaylistClick(int x, int y, PlayerSnapshot snapshot, out int trackIndex)
     {
         trackIndex = -1;
-        var totalTracks = QueueCount(snapshot);
-        var hitbox = _lastPlaylistHitboxes.FirstOrDefault(candidate =>
-            y == candidate.Y &&
-            x >= candidate.X &&
-            x < candidate.X + candidate.Width);
-
-        if (hitbox is null || hitbox.TrackIndex < 0 || hitbox.TrackIndex >= totalTracks)
+        if (!ToZeroBased(x, y, out var column, out var row))
             return false;
 
-        trackIndex = hitbox.TrackIndex;
+        var resolved = _lastHits.FindQueueRow(column, row);
+        if (resolved is not { } index || index < 0 || index >= QueueCount(snapshot))
+            return false;
+
+        trackIndex = index;
         return true;
     }
 
     public static bool TryResolveVolumeClick(int x, int y, out int volumePercent)
     {
-        const int widgetPaddingLeft = 4;
-        const int widgetPaddingRight = 6;
-        const int widgetPaddingTop = 1;
-        const int widgetPaddingBottom = 1;
         volumePercent = 0;
-        if (_lastVolumeHitbox is not { } hitbox ||
-            y < hitbox.Y - widgetPaddingTop ||
-            y > hitbox.Y + widgetPaddingBottom ||
-            x < hitbox.X - widgetPaddingLeft ||
-            x >= hitbox.X + hitbox.Width + widgetPaddingRight)
-        {
+        if (!ToZeroBased(x, y, out var column, out var row))
             return false;
-        }
 
-        var clampedX = Math.Clamp(x, hitbox.X, hitbox.X + hitbox.Width - 1);
-        var ratio = hitbox.Width <= 1
+        var hitbox = FindVolumeHit(column, row);
+        if (hitbox is not { } region)
+            return false;
+
+        var clampedX = Math.Clamp(column, region.Bounds.X, region.Bounds.Right - 1);
+        var ratio = region.Bounds.Width <= 1
             ? 0
-            : (double)(clampedX - hitbox.X) / (hitbox.Width - 1);
+            : (double)(clampedX - region.Bounds.X) / (region.Bounds.Width - 1);
         volumePercent = Math.Clamp((int)Math.Round(ratio * 100), 0, 100);
         return true;
     }
 
     public static void ResetFrameCache()
     {
-        _lastRenderedLines = null;
-        _lastRenderedWidth = 0;
-        _lastRenderedHeight = 0;
-        _lastRenderedTerminalHeight = 0;
-        _lastProgressHitbox = null;
-        _lastVolumeHitbox = null;
-        _lastPlaylistHitboxes = Array.Empty<PlaylistHitbox>();
+        _previousFrame = null;
+        _lastHits = new HitRegistry();
+        _lastCaret = null;
+        _frameWidth = 0;
+        _frameHeight = 0;
     }
 
-    private static void AppendFrameBuffer(StringBuilder output, IReadOnlyList<string> lines, int width)
+    private static HitRegion? FindVolumeHit(int x, int y)
     {
-        for (var i = 0; i < lines.Count; i++)
+        // The volume track is forgiving: clicks slightly outside its ends still
+        // clamp to 0% / 100%, matching the previous behaviour.
+        foreach (var region in _lastHits.Regions)
         {
-            output.Append($"\u001b[{i + 1};1H");
-            output.Append(TerminalText.PadAnsiAware(lines[i], width));
-            output.Append("\u001b[K");
-        }
-    }
+            if (region.Kind != HitKind.Volume || y != region.Bounds.Y)
+                continue;
 
-    private static IReadOnlyList<string> RenderSplashContentToLines(RenderContext context, int terminalWidth, int mainHeight)
-    {
-        var contentWidth = Math.Max(0, terminalWidth - 2);
-        var contentHeight = Math.Max(0, mainHeight - 2);
-        if (contentWidth <= 0 || contentHeight <= 0)
-            return Array.Empty<string>();
-
-        return RenderToLines(
-            SplashCanvas.Render(context.AnimationFrame, SplashScreen.CurrentVersion, contentWidth, contentHeight, context.Snapshot),
-            contentWidth,
-            contentHeight);
-    }
-
-    private static void AppendSplashContentBuffer(StringBuilder output, IReadOnlyList<string> lines, int terminalWidth, int mainHeight)
-    {
-        var contentWidth = Math.Max(0, terminalWidth - 2);
-        var contentHeight = Math.Max(0, mainHeight - 2);
-        if (contentWidth <= 0 || contentHeight <= 0)
-            return;
-
-        for (var i = 0; i < contentHeight; i++)
-        {
-            var line = i < lines.Count ? lines[i] : string.Empty;
-            output.Append($"\u001b[{i + 2};2H");
-            output.Append(TerminalText.PadAnsiAware(line, contentWidth));
-        }
-    }
-
-    private static void AppendInputLine(StringBuilder output, RenderContext context)
-    {
-        var width = context.Width > 0 ? context.Width : 80;
-        var height = context.Height > 0 ? context.Height : 24;
-        var line = RenderToLines(InputPrompt.RenderLine(width, context.Input), width, 1)[0];
-        output.Append($"\u001b[{height};1H");
-        output.Append(TerminalText.PadAnsiAware(line, width));
-        output.Append("\u001b[K");
-    }
-
-    private static void AppendClearLine(StringBuilder output, int row, int width)
-    {
-        if (row <= 0)
-            return;
-
-        output.Append($"\u001b[{row};1H");
-        output.Append(new string(' ', Math.Max(0, width)));
-        output.Append("\u001b[K");
-    }
-
-    private static void AppendSplashBorder(StringBuilder output, int width, int height)
-    {
-        if (width < 2 || height < 2)
-            return;
-
-        var horizontalWidth = Math.Max(0, width - 2);
-        var horizontal = new string('─', horizontalWidth);
-        output.Append(TerminalStyles.AnsiAccent);
-        output.Append("\u001b[1;1H╭");
-        if (horizontalWidth > 0)
-            output.Append(horizontal);
-        output.Append($"\u001b[1;{width}H╮");
-
-        for (var row = 2; row < height; row++)
-            output.Append($"\u001b[{row};1H│\u001b[{row};{width}H│");
-
-        output.Append($"\u001b[{height};1H╰");
-        if (horizontalWidth > 0)
-            output.Append(horizontal);
-        output.Append($"\u001b[{height};{width}H╯");
-        output.Append(TerminalStyles.Reset);
-    }
-
-    private static IReadOnlyList<string> RenderToLines(IRenderable renderable, int width, int height)
-    {
-        using var writer = new StringWriter();
-        var console = AnsiConsole.Create(new AnsiConsoleSettings
-        {
-            Ansi = AnsiSupport.Yes,
-            ColorSystem = ColorSystemSupport.TrueColor,
-            Interactive = InteractionSupport.No,
-            Out = new FixedSizeAnsiOutput(writer, width, height)
-        });
-
-        console.Write(renderable);
-        var normalized = writer.ToString().Replace("\r\n", "\n").Replace('\r', '\n');
-        var lines = normalized.Split('\n').ToList();
-        if (lines.Count > 0 && lines[^1].Length == 0)
-            lines.RemoveAt(lines.Count - 1);
-
-        while (lines.Count < height)
-            lines.Add(string.Empty);
-
-        if (lines.Count > height)
-            lines.RemoveRange(height, lines.Count - height);
-
-        for (var i = 0; i < lines.Count; i++)
-            lines[i] = TerminalText.TrimAnsiAware(lines[i], width);
-
-        return lines;
-    }
-
-    private static void UpdateHitboxes(RenderContext context)
-    {
-        if (context.MiniMode)
-        {
-            _lastProgressHitbox = null;
-            _lastVolumeHitbox = null;
-            _lastPlaylistHitboxes = Array.Empty<PlaylistHitbox>();
-            return;
+            if (x >= region.Bounds.X - 2 && x < region.Bounds.Right + 2)
+                return region;
         }
 
-        if (context.SplashMode)
-        {
-            var hitboxes = SplashCanvas.ResolveHitboxes(context.Width, context.Height, context.Snapshot);
-            _lastProgressHitbox = hitboxes.Progress is { } progress
-                ? new ProgressHitbox(progress.X, progress.Y, progress.Width)
-                : null;
-            _lastVolumeHitbox = hitboxes.Volume is { } volume
-                ? new ProgressHitbox(volume.X, volume.Y, volume.Width)
-                : null;
-            _lastPlaylistHitboxes = Array.Empty<PlaylistHitbox>();
-            return;
-        }
+        return null;
+    }
 
-        const int headerHeight = 1;
-        const int nowPlayingHeight = 6;
-        const int playbackHeight = 4;
-        const int helpHeight = 1;
-        var queuePanelHeight = Math.Max(4, Math.Max(17, context.Height) - headerHeight - nowPlayingHeight - playbackHeight - helpHeight);
-        var visibleRows = Math.Max(1, queuePanelHeight - 2);
-        var totalTracks = QueueCount(context.Snapshot);
-        var offset = Math.Clamp(context.QueueScrollOffset, 0, Math.Max(0, totalTracks - visibleRows));
-        var layoutWidth = LayoutMetrics.ContentWidth(context.Width);
-        var leftMargin = LayoutMetrics.LeftMargin(context.Width, layoutWidth);
-        var queueX = leftMargin + 3;
-        var queueY = headerHeight + nowPlayingHeight + 2;
-        var queueWidth = Math.Max(1, layoutWidth - 6);
-        var renderedTrackRows = totalTracks - offset > visibleRows
-            ? Math.Max(0, visibleRows - 1)
-            : Math.Min(visibleRows, Math.Max(0, totalTracks - offset));
-
-        _lastPlaylistHitboxes = Enumerable.Range(offset, renderedTrackRows)
-            .Select((trackIndex, rowOffset) => new PlaylistHitbox(
-                trackIndex,
-                queueX,
-                queueY + rowOffset,
-                queueWidth))
-            .ToList();
-
-        _lastProgressHitbox = context.Snapshot.Current?.Duration is { TotalSeconds: > 0 }
-            ? new ProgressHitbox(
-                leftMargin + 3,
-                headerHeight + nowPlayingHeight + queuePanelHeight + 3,
-                Math.Max(1, PlaybackPanel.ProgressHitboxWidth(context.Snapshot, layoutWidth)))
-            : null;
-        _lastVolumeHitbox = null;
+    private static bool ToZeroBased(int x, int y, out int column, out int row)
+    {
+        column = x - 1;
+        row = y - 1;
+        return column >= 0 && row >= 0;
     }
 
     private static int QueueCount(PlayerSnapshot snapshot) =>
         snapshot.Previous.Count + snapshot.Pending.Count + (snapshot.Current is null ? 0 : 1);
 
-    private static void Remember(IReadOnlyList<string> lines, int width, int height, int terminalHeight)
-    {
-        _lastRenderedLines = lines;
-        _lastRenderedWidth = width;
-        _lastRenderedHeight = height;
-        _lastRenderedTerminalHeight = terminalHeight;
-    }
-
-    private static CursorPosition? ResolveInputCursor(RenderContext context)
-    {
-        if (context.MiniMode)
-            return null;
-
-        return new CursorPosition(
-            InputPrompt.CursorColumn(context.Width, context.Input),
-            Math.Clamp(context.Height, 1, Math.Max(1, context.Height)));
-    }
-
-    private sealed class FixedSizeAnsiOutput(TextWriter writer, int width, int height) : IAnsiConsoleOutput
-    {
-        public TextWriter Writer { get; } = writer;
-
-        public bool IsTerminal => true;
-
-        public int Width { get; } = Math.Max(1, width);
-
-        public int Height { get; } = Math.Max(1, height);
-
-        public void SetEncoding(Encoding encoding)
-        {
-        }
-    }
-
-    private sealed record PlaylistHitbox(int TrackIndex, int X, int Y, int Width);
-
-    private sealed record ProgressHitbox(int X, int Y, int Width);
-
-    private sealed record CursorPosition(int Column, int Row);
+    private static PlayerSnapshot EmptySnapshot() =>
+        new(
+            PlaybackStatus.Stopped,
+            null,
+            Array.Empty<Track>(),
+            Array.Empty<Track>(),
+            null,
+            100);
 }

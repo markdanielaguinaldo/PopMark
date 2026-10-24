@@ -1,0 +1,27 @@
+{
+  "name": "popmark-ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "OpenTUI frontend for the PopMark playback backend",
+  "engines": {
+    "bun": ">=1.3.14"
+  },
+  "scripts": {
+    "start": "bun --conditions=browser src/index.tsx",
+    "dev": "bun --conditions=browser src/index.tsx",
+    "build": "bun --conditions=browser build.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun --conditions=browser test tests",
+    "smoke": "bun --conditions=browser scripts/pty-smoke.ts"
+  },
+  "dependencies": {
+    "@opentui/core": "0.6.8",
+    "@opentui/solid": "0.6.8",
+    "solid-js": "1.9.12"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.0",
+    "typescript": "^5.7.0"
+  }
+}

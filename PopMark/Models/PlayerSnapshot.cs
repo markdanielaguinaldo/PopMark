@@ -6,4 +6,5 @@ public sealed record PlayerSnapshot(
     IReadOnlyList<Track> Pending,
     IReadOnlyList<Track> Previous,
     TimeSpan? Elapsed = null,
-    int VolumePercent = 100);
+    int VolumePercent = 100,
+    TimeSpan? Duration = null);

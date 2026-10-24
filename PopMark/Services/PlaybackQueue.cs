@@ -1,4 +1,4 @@
-﻿using PopMark.Models;
+using PopMark.Models;
 
 namespace PopMark.Services;
 
@@ -17,6 +17,8 @@ public sealed class PlaybackQueue
     private PlaybackStatus _status = PlaybackStatus.Stopped;
     private TimeSpan _positionOffset = TimeSpan.Zero;
     private DateTimeOffset? _positionStartedAt;
+    private TimeSpan? _liveDuration;
+    private bool _positionProbeAttempted;
     private int _volumePercent = DefaultVolumePercent;
 
     public event Action<PlayerSnapshot>? SnapshotChanged;
@@ -104,6 +106,7 @@ public sealed class PlaybackQueue
             _positionStartedAt = null;
             _status = PlaybackStatus.Paused;
         }
+        await RefreshPositionAsync(cancellationToken);
         LastMessage = "Playback paused.";
         NotifySnapshotChanged();
     }
@@ -122,6 +125,7 @@ public sealed class PlaybackQueue
             _positionStartedAt = DateTimeOffset.UtcNow;
             _status = PlaybackStatus.Playing;
         }
+        await RefreshPositionAsync(cancellationToken);
         LastMessage = "Playback resumed.";
         NotifySnapshotChanged();
     }
@@ -163,6 +167,7 @@ public sealed class PlaybackQueue
 
             LastMessage = _status == PlaybackStatus.Paused ? "Playback paused." : "Playback resumed.";
         }
+        await RefreshPositionAsync(cancellationToken);
         NotifySnapshotChanged();
     }
 
@@ -557,11 +562,91 @@ public sealed class PlaybackQueue
         NotifySnapshotChanged();
     }
 
+    /// <summary>
+    /// Pulls the authoritative position (and, when yt-dlp did not know it, the
+    /// duration) from mpv. Called by the bridge timer while playback is active.
+    /// Any IPC failure leaves the last known position untouched.
+    /// </summary>
+    public async Task RefreshPositionAsync(CancellationToken cancellationToken = default)
+    {
+        Track? current;
+        bool needDuration;
+        lock (_syncRoot)
+        {
+            current = _current;
+            if (current is null || _status is not (PlaybackStatus.Playing or PlaybackStatus.Paused))
+                return;
+
+            needDuration = (current.Duration is null || current.Duration <= TimeSpan.Zero) &&
+                           _liveDuration is null;
+        }
+
+        var positionSeconds = await _mpv.TryGetNumberPropertyAsync("time-pos", cancellationToken);
+        if (positionSeconds is not { } seconds || !double.IsFinite(seconds) || seconds < 0)
+        {
+            // Do not let the local estimator run all the way to 100% when the
+            // player's real position cannot be read. Freeze the last estimate
+            // and try again on the next tick.
+            lock (_syncRoot)
+            {
+                if (ReferenceEquals(_current, current) &&
+                    _status is PlaybackStatus.Playing or PlaybackStatus.Paused)
+                {
+                    _positionProbeAttempted = true;
+                    if (_status == PlaybackStatus.Playing && _positionProbeAttempted)
+                    {
+                        _positionOffset = ResolveElapsedLocked();
+                        _positionStartedAt = null;
+                    }
+                }
+            }
+
+            return;
+        }
+
+        TimeSpan? liveDuration = null;
+        if (needDuration)
+        {
+            var durationSeconds = await _mpv.TryGetNumberPropertyAsync("duration", cancellationToken);
+            if (durationSeconds is { } durationValue &&
+                double.IsFinite(durationValue) &&
+                durationValue > 0)
+            {
+                liveDuration = TimeSpan.FromSeconds(durationValue);
+            }
+        }
+
+        lock (_syncRoot)
+        {
+            if (!ReferenceEquals(_current, current) ||
+                _status is not (PlaybackStatus.Playing or PlaybackStatus.Paused))
+            {
+                return;
+            }
+
+            if (liveDuration is { } duration && duration > TimeSpan.Zero)
+                _liveDuration = duration;
+
+            _positionOffset = ClampElapsedLocked(TimeSpan.FromSeconds(seconds));
+            _positionStartedAt = _status == PlaybackStatus.Playing
+                ? DateTimeOffset.UtcNow
+                : null;
+            _positionProbeAttempted = true;
+        }
+    }
+
     public PlayerSnapshot CreateSnapshot()
     {
         lock (_syncRoot)
         {
-            return new PlayerSnapshot(_status, _current, _pending.ToList(), _previous.Reverse().ToList(), ResolveElapsedLocked(), _volumePercent);
+            return new PlayerSnapshot(
+                _status,
+                _current,
+                _pending.ToList(),
+                _previous.Reverse().ToList(),
+                ResolveElapsedLocked(),
+                _volumePercent,
+                _liveDuration);
         }
     }
 
@@ -659,6 +744,8 @@ public sealed class PlaybackQueue
     {
         _positionOffset = TimeSpan.Zero;
         _positionStartedAt = startRunning ? DateTimeOffset.UtcNow : null;
+        _liveDuration = null;
+        _positionProbeAttempted = false;
     }
 
     private void PrependPendingLocked(Track track)
@@ -695,8 +782,11 @@ public sealed class PlaybackQueue
         if (elapsed < TimeSpan.Zero)
             return TimeSpan.Zero;
 
-        if (_current?.Duration is { } duration && elapsed > duration)
-            return duration;
+        var duration = _current?.Duration is { } trackDuration && trackDuration > TimeSpan.Zero
+            ? trackDuration
+            : _liveDuration;
+        if (duration is { } knownDuration && elapsed > knownDuration)
+            return knownDuration;
 
         return elapsed;
     }

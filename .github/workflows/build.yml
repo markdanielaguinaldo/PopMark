@@ -19,8 +19,32 @@ jobs:
         with:
           dotnet-version: 9.0.x
 
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+
       - name: Restore dependencies
         run: dotnet restore .\PopMark.sln
 
       - name: Build release
         run: dotnet build .\PopMark.sln --configuration Release --no-restore
+
+      - name: Test backend
+        run: dotnet test .\PopMark.sln --configuration Release --no-build
+
+      - name: Install frontend dependencies
+        working-directory: ui
+        run: bun install --frozen-lockfile
+
+      - name: Type-check frontend
+        working-directory: ui
+        run: bun run typecheck
+
+      - name: Test frontend
+        working-directory: ui
+        run: bun run test
+
+      - name: Build frontend bundle
+        working-directory: ui
+        run: bun run build

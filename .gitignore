@@ -5,3 +5,7 @@ obj/
 *.user
 *.suo
 *.log
+.serena/
+releases/
+ui/node_modules/
+ui/dist/

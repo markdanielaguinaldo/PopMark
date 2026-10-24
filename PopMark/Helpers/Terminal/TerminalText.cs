@@ -122,6 +122,9 @@ internal static class TerminalText
         return value[start..];
     }
 
+    /// <summary>Number of terminal cells a Unicode code point occupies.</summary>
+    public static int CodePointWidth(int codePoint) => CellWidth(codePoint);
+
     private static int CellWidth(int codePoint)
     {
         if (codePoint == 0 ||

@@ -1,8 +1,13 @@
-﻿using PopMark.Helpers;
+using PopMark.Helpers;
+using PopMark.Helpers.Bridge;
+using PopMark.Helpers.OpenTui;
+using PopMark.Helpers.Terminal;
 using PopMark.Models;
 using PopMark.Services;
 using Spectre.Console;
 using System.Reflection;
+using System.Text;
+using System.Text.Json;
 
 internal static class Program
 {
@@ -21,6 +26,19 @@ internal static class Program
         {
             Console.WriteLine(VersionDisplay());
             return 0;
+        }
+
+        if (args.Any(arg => arg.Equals(BridgeProtocol.BridgeFlag, StringComparison.OrdinalIgnoreCase)))
+            return await RunBridgeAsync();
+
+        if (OpenTuiLauncher.TryLaunch(args, out var openTuiExitCode))
+            return openTuiExitCode;
+
+        if (args.Any(arg => arg.Equals("--legacy-ui", StringComparison.OrdinalIgnoreCase)))
+        {
+            args = args
+                .Where(arg => !arg.Equals("--legacy-ui", StringComparison.OrdinalIgnoreCase))
+                .ToArray();
         }
 
         if (args.Length > 0 && IsToolsCommand(args[0]))
@@ -291,6 +309,72 @@ internal static class Program
         }
     }
 
+    /// <summary>
+    /// Headless mode for the OpenTUI frontend. stdout carries only JSON lines;
+    /// diagnostics and stray console output are redirected to stderr.
+    /// </summary>
+    private static async Task<int> RunBridgeAsync()
+    {
+        var stdout = new StreamWriter(Console.OpenStandardOutput(), new UTF8Encoding(false))
+        {
+            AutoFlush = false
+        };
+
+        Console.SetOut(Console.Error);
+
+        var ytDlp = new YtDlpService();
+        var mpv = new MpvPlayer();
+        var player = new PlaybackQueue(ytDlp, mpv);
+        var dependencies = new DependencyInstaller();
+        var shutdownGuard = new PlaybackShutdownGuard(player);
+        player.SnapshotChanged += QueueCacheStore.Save;
+
+        try
+        {
+            PlaybackSessionStore.CleanupStaleSessions();
+
+            var cachedQueue = QueueCacheStore.Load();
+            if (cachedQueue.Current is not null ||
+                cachedQueue.Pending.Count > 0 ||
+                cachedQueue.Previous.Count > 0)
+            {
+                player.RestoreQueue(cachedQueue);
+            }
+
+            var session = new BridgeSession(player, dependencies, stdout, AppVersion());
+            return await session.RunAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[bridge] fatal: {ex}");
+            try
+            {
+                var error = JsonSerializer.Serialize(
+                    BridgeErrorDto.Create(null, $"Bridge failed: {ex.Message}"),
+                    BridgeProtocol.JsonOptions);
+                stdout.WriteLine(error);
+                stdout.Flush();
+            }
+            catch
+            {
+            }
+
+            return 1;
+        }
+        finally
+        {
+            shutdownGuard.Cleanup();
+
+            try
+            {
+                stdout.Flush();
+            }
+            catch
+            {
+            }
+        }
+    }
+
     private static async Task<bool> ProcessCommandAsync(
         PlaybackQueue player,
         DependencyInstaller dependencies,
@@ -411,7 +495,7 @@ internal static class Program
         }
     }
 
-    private static string UnknownCommandMessage(string command) =>
+    internal static string UnknownCommandMessage(string command) =>
         $"Unknown command: {ShortCommand(command)}. Type help to list commands.";
 
     private static string ShortCommand(string command)
@@ -431,7 +515,7 @@ internal static class Program
     private const string ToolsUsage =
         "Usage: tools | tools install [yt-dlp|mpv|all] | tools set <tool> <path> | tools clear <tool>";
 
-    private static async Task<string> HandleToolsCommandAsync(
+    internal static async Task<string> HandleToolsCommandAsync(
         DependencyInstaller dependencies,
         string[] args,
         bool interactive = true)
@@ -719,7 +803,7 @@ internal static class Program
         return 15;
     }
 
-    private static bool TryResolveAddTarget(string[] args, out string target)
+    internal static bool TryResolveAddTarget(string[] args, out string target)
     {
         target = string.Empty;
         if (args.Length < 2)
@@ -735,7 +819,7 @@ internal static class Program
         return true;
     }
 
-    private static string AddUsageMessage() =>
+    internal static string AddUsageMessage() =>
         "Usage: add <url or search>";
 
     private static string DeprecatedTrackNavigationMessage(string command) =>
@@ -748,7 +832,7 @@ internal static class Program
          args[0].Equals("version", StringComparison.OrdinalIgnoreCase) ||
          args[0].Equals("ver", StringComparison.OrdinalIgnoreCase));
 
-    private static string VersionDisplay() =>
+    internal static string VersionDisplay() =>
         $"PopMark {AppVersion()}";
 
     private static string AppVersion() =>
@@ -907,14 +991,7 @@ internal static class Program
     private static int VisibleQueueRows(int terminalHeight)
     {
         var height = terminalHeight > 0 ? terminalHeight : 24;
-        var mainHeight = Math.Max(1, height - 1);
-        var layoutHeight = Math.Max(18, mainHeight);
-        const int headerHeight = 1;
-        const int nowPlayingHeight = 6;
-        const int playbackHeight = 4;
-        const int helpHeight = 1;
-        var queueHeight = Math.Max(4, layoutHeight - headerHeight - nowPlayingHeight - playbackHeight - helpHeight);
-        return Math.Max(1, queueHeight - 2);
+        return LayoutMetrics.VisibleQueueRows(height);
     }
 
     private static bool TryResolveProgressClickCommand(string command, PlayerSnapshot snapshot, out TimeSpan timestamp)
@@ -993,7 +1070,7 @@ internal static class Program
                int.TryParse(parts[2], out y);
     }
 
-    private static bool IsLikelyUrl(string value) =>
+    internal static bool IsLikelyUrl(string value) =>
         Uri.TryCreate(value.Trim(), UriKind.Absolute, out var uri) &&
         (uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) ||
          uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase));

@@ -4,75 +4,236 @@
 
 <p align="center">
   <strong>Your YouTube music queue, in the terminal.</strong><br>
-  PopMark expands videos and playlists with <code>yt-dlp</code> and streams the audio
-  through <code>mpv</code>, so your music is never downloaded to disk.
+  PopMark expands videos and playlists with <code>yt-dlp</code>, streams audio through
+  <code>mpv</code>, and renders a modern terminal interface with OpenTUI + SolidJS.
 </p>
 
 <p align="center">
   <a href="#quick-start">Quick Start</a> ·
+  <a href="#controls">Controls</a> ·
   <a href="docs/installation.md">Installation</a> ·
   <a href="docs/configuration.md">Configuration</a> ·
   <a href="docs/user-guide.md">User Guide</a> ·
   <a href="docs/troubleshooting.md">Troubleshooting</a>
 </p>
 
-PopMark is a small terminal music queue for YouTube videos and playlists. Paste a link,
-or type a search, and it resolves the tracks, keeps them in a queue, and plays them
-through `mpv`. The queue survives a restart, and playback continues to the next track
-without you touching anything.
+PopMark is a terminal music queue for YouTube videos and playlists. Paste a link or
+type a search, and it resolves the tracks, keeps a queue, and plays them through `mpv`.
+The queue survives restarts, playback advances automatically, and the current posi-
+tion is read live from `mpv`.
+
+The interface is a real [OpenTUI](https://opentui.com) application built with SolidJS.
+The C# backend still owns playback, MPV IPC, YouTube resolution, queue persistence, and
+tool management; the frontend talks to it over a small JSON protocol.
 
 ## Preview
 
-![PopMark: adding a playlist, then seeking and changing the volume with the mouse](docs/demo.gif)
+### Command Center
 
-Adding a 34-track playlist, then seeking and changing the volume by clicking the progress
-bar and slider. <kbd>Tab</kbd> switches between this queue view and the splash view.
+![PopMark Command Center](docs/images/command-center.png)
+
+The queue, live progress, transport controls, volume slider, tool health, and shortcuts.
+Click a row to play it; drag the progress bar or volume slider.
+
+### Focus View
+
+![PopMark Focus View](docs/images/focus-view.png)
+
+Press <kbd>F3</kbd> for the large now-playing view. It is a playback surface, not a
+second command input: printable keys are ignored, while playback and navigation
+shortcuts still work.
 
 ## Quick Start
 
-**Requirements:** Windows x64 for the released build. Building from source needs the
-.NET 9 SDK. `yt-dlp` and `mpv` are installed for you if they are missing; no admin
-rights are required.
+### Portable release
 
-1. Download the latest `PopMark-v<version>-win-x64.zip` from
-   [Releases](https://github.com/markdanielaguinaldo/PopMark/releases) and extract it.
-2. Run `PopMark.exe`.
-3. On first launch, accept the prompt to install `yt-dlp` and `mpv` into
-   `%LOCALAPPDATA%\PopMark\tools`.
-4. Add something to the queue:
+Download the latest portable release from
+[Releases](https://github.com/markdanielaguinaldo/PopMark/releases), extract it, and run
+`PopMark.exe`. The portable build includes its own Bun runtime and OpenTUI assets, so
+you do not need .NET or Bun installed.
 
-   ```text
-   add https://www.youtube.com/watch?v=...
-   add https://www.youtube.com/playlist?list=...
-   add lofi hip hop
-   ```
+You still need `yt-dlp` and `mpv`; PopMark can install both into
+`%LOCALAPPDATA%\PopMark\tools` without administrator rights.
 
-5. Press <kbd>Space</kbd> to play or pause, and <kbd>Tab</kbd> to switch views.
+### Build from source
 
-To run from source:
+Requirements:
+
+- Windows x64
+- .NET 9 SDK
+- Bun 1.3.14 or newer
 
 ```powershell
+git clone https://github.com/markdanielaguinaldo/PopMark.git
+cd PopMark
+
+dotnet build .\PopMark.sln --configuration Release
 dotnet run --project .\PopMark\PopMark.csproj
 ```
 
-See the [installation guide](docs/installation.md) for the released build, local tool
-installation, and upgrades.
+The C# launcher starts the OpenTUI frontend automatically. To run the frontend directly:
+
+```powershell
+cd ui
+bun install
+bun run start
+```
+
+Force the retired C# terminal UI (deprecated, kept for one release as a fallback):
+
+```powershell
+dotnet run --project .\PopMark\PopMark.csproj -- --legacy-ui
+```
 
 ## Features
 
+- **OpenTUI + SolidJS interface** — panels, dialogs, focus view, mouse support, and a
+  responsive layout.
+- **Live playback position** — elapsed time and progress come from MPV through IPC, not
+  a local guess.
+- **Drag-to-seek and drag-to-volume** — press and hold either slider, then slide.
 - **YouTube queue** — add videos, playlists, or a search result from the terminal.
 - **No downloads** — audio is streamed through `mpv`; PopMark keeps a queue, not a music
   library.
-- **Queue restore** — the current track, upcoming tracks, and volume come back on the
-  next launch.
-- **Keyboard and mouse** — seek, volume, scroll, and click a playlist row to play it.
-- **Splash and playlist views** — <kbd>Tab</kbd> flips between the splash art and the queue.
-- **Clear failure reporting** — a track that dies on start says why, and `play-test`
-  reproduces the problem outside the UI.
-- **Local tool install** — `yt-dlp` and `mpv` can live in PopMark's own folder, so no
-  admin access or system-wide install is needed.
-- **Tool discovery** — pinned paths, environment variables, and `PATH` first, then the
-  WinGet, Scoop, Chocolatey, and Program Files folders.
+- **Queue restore** — current track, upcoming tracks, and volume return on the next
+  launch.
+- **Focus View** — a large now-playing screen with a waveform, progress, and track info.
+- **Diagnostics** — <kbd>F4</kbd> collects tool reports and backend stderr without
+  painting over the renderer.
+- **Tool management** — install, pin, clear, and inspect `yt-dlp` / `mpv` from the UI.
+- **Legacy backup** - the original C# terminal UI is retired; a self-contained
+  backup build is attached to the release for nostalgia only.
+
+## Controls
+
+### Command Center
+
+| Control | Action |
+| --- | --- |
+| `/` or click the input | Focus the command field |
+| <kbd>Tab</kbd> | Cycle command → navigation → focus view |
+| <kbd>Esc</kbd> | Leave input, close dialog, or return from Focus View |
+| <kbd>Space</kbd> | Play/pause in navigation or Focus View |
+| <kbd>n</kbd> / <kbd>p</kbd> | Next / previous track outside command entry |
+| <kbd>↑</kbd> / <kbd>↓</kbd> | Move the queue selection |
+| <kbd>Enter</kbd> | Play the selected row |
+| <kbd>Ctrl</kbd>+<kbd>P</kbd> | Toggle playback from anywhere |
+| <kbd>Ctrl</kbd>+<kbd>N</kbd> / <kbd>Ctrl</kbd>+<kbd>B</kbd> | Next / previous track |
+| <kbd>Ctrl</kbd>+<kbd>←</kbd> / <kbd>Ctrl</kbd>+<kbd>→</kbd> | Seek ±10 seconds |
+| <kbd>Ctrl</kbd>+<kbd>↑</kbd> / <kbd>Ctrl</kbd>+<kbd>↓</kbd> | Volume ±10% |
+| <kbd>Alt</kbd>+<kbd>←</kbd> / <kbd>Alt</kbd>+<kbd>→</kbd> | Seek ±10 seconds |
+| <kbd>F1</kbd> | Command reference |
+| <kbd>F2</kbd> | Playback tools |
+| <kbd>F3</kbd> | Focus View |
+| <kbd>F4</kbd> | Diagnostics |
+| <kbd>Ctrl</kbd>+<kbd>Q</kbd> | Quit |
+| Click a queue row | Play that track |
+| Drag or click the progress bar | Seek to that timestamp |
+| Drag or click the volume slider | Set the volume |
+
+Only <kbd>Ctrl</kbd>+<kbd>Q</kbd> quits. Plain <kbd>q</kbd> is not a quit key.
+
+### Focus View
+
+Focus View supports the same playback and navigation shortcuts, including
+<kbd>Space</kbd>, <kbd>n</kbd>/<kbd>p</kbd>, arrow keys, <kbd>s</kbd>, <kbd>F1</kbd>,
+<kbd>F2</kbd>, <kbd>F4</kbd>, and <kbd>Esc</kbd>/<kbd>F3</kbd> to return. Drag its
+progress bar to seek.
+
+## Commands
+
+| Command | Action |
+| --- | --- |
+| `add <url or search>` | Add a YouTube video, playlist, or search result |
+| `play` / `pause` | Toggle playback |
+| `next` / `previous` | Move through the queue |
+| `goto <#\|title>` | Focus a playlist row |
+| `shuffle` | Randomize upcoming tracks |
+| `stop` | Stop and clear the queue |
+| `clear playlist` | Stop and empty the queue |
+| `tools` | Show resolved tool paths and open tool management |
+| `tools install [yt-dlp\|mpv\|all]` | Install a managed copy |
+| `tools set <tool> <path>` | Pin an existing executable |
+| `tools clear <tool>` | Remove a pinned path |
+| `logs` | Open diagnostics |
+| `version` | Show the app version |
+| `quit` | Stop playback and exit |
+
+## Releases
+
+OpenTUI is now the active interface. The original C# terminal UI is retired: it is no
+longer developed, and the archive below exists only as a nostalgia backup. Everything
+still works from the same `%LOCALAPPDATA%\PopMark` state, so either build can read the
+same queue and tool settings.
+
+| Artifact | Purpose | Status |
+| --- | --- | --- |
+| `PopMark-1.1.2-OpenTUI-win-x64-portable.zip` | Current OpenTUI build with bundled Bun and UI assets | Active |
+| `PopMark-1.1.2-legacy-win-x64.zip` | Backup of the original C# terminal UI, built from tag `v1.1.2` | Deprecated |
+
+The legacy archive is intentionally self-contained. It is provided so the previous
+interface remains runnable, not as a supported alternative.
+
+Build both archives locally with:
+
+```powershell
+.\scripts\build-portable.ps1
+.\scripts\build-legacy.ps1
+```
+
+The archives land in `releases/` and are not committed to Git.
+
+## Local state
+
+Everything PopMark remembers lives under `%LOCALAPPDATA%\PopMark`:
+
+| File | Contents |
+| --- | --- |
+| `queue.json` | Current track, previous and upcoming tracks, volume |
+| `tools.json` | Pinned `yt-dlp` and `mpv` paths |
+| `sessions.json` | Live `mpv` processes, used to clean up after a crash |
+| `tools\` | Tools installed by PopMark itself |
+
+PopMark has no account system and no telemetry. It talks to YouTube through `yt-dlp`
+and to GitHub when it installs or updates a tool. Deleting the folder resets PopMark
+completely.
+
+## Architecture
+
+```text
+PopMark.exe
+└── OpenTUI frontend (Bun + TypeScript + SolidJS)
+      └── PopMark --bridge (C#)
+            ├── PlaybackQueue / MpvPlayer
+            ├── YtDlpService
+            ├── QueueCacheStore / PlaybackSessionStore
+            └── ToolLocator / DependencyInstaller
+```
+
+The bridge is newline-delimited JSON over stdin/stdout. MPV is never exposed to the
+frontend. See [docs/development.md](docs/development.md) for the protocol, lifecycle,
+and testing details.
+
+## Development
+
+```powershell
+dotnet build .\PopMark.sln --configuration Release
+dotnet test .\PopMark.sln --configuration Release
+
+cd ui
+bun install
+bun run typecheck
+bun run test
+bun run build
+```
+
+Optional real-MPV integration tests:
+
+```powershell
+$env:POPMARK_MPV_INTEGRATION = "1"
+dotnet test .\PopMark.sln --configuration Release --filter FullyQualifiedName~MpvPositionIntegrationTests
+Remove-Item Env:POPMARK_MPV_INTEGRATION
+```
 
 ## Documentation
 
@@ -82,20 +243,10 @@ installation, and upgrades.
 | [Configuration](docs/configuration.md) | Tool discovery, pinned paths, environment variables, state files, volume |
 | [User Guide](docs/user-guide.md) | Adding music, views, commands, keyboard and mouse controls, queue restore |
 | [Troubleshooting](docs/troubleshooting.md) | Missing tools, 403 errors, failed playback, stale sessions, exit codes |
-| [Development](docs/development.md) | Project layout, architecture, build and release flow, commit conventions |
+| [Development](docs/development.md) | OpenTUI architecture, bridge protocol, tests, release flow |
 
-## Privacy and local state
+## Versioning
 
-PopMark has no account system and no telemetry. It talks to YouTube through `yt-dlp`
-and to GitHub when it installs or updates a tool. Everything it remembers lives under
-`%LOCALAPPDATA%\PopMark`:
-
-| File | Contents |
-| --- | --- |
-| `queue.json` | Current track, previous and upcoming tracks, volume |
-| `tools.json` | Pinned `yt-dlp` and `mpv` paths |
-| `sessions.json` | Live `mpv` processes, used to clean up after a crash |
-| `tools\` | Tools installed by PopMark itself |
-
-Deleting that folder resets PopMark completely. Nothing is written next to the
-executable, so an extracted release can be removed by deleting its folder.
+Published builds use semantic versioning from `PopMark/PopMark.csproj`. Update `Version`,
+`AssemblyVersion`, `FileVersion`, and `InformationalVersion` together before publishing
+a release.

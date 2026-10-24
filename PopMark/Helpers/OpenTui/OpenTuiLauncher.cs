@@ -203,15 +203,25 @@ internal static class OpenTuiLauncher
 
     private static string? BackendPath()
     {
-        var assemblyPath = Assembly.GetEntryAssembly()?.Location;
-        if (!string.IsNullOrWhiteSpace(assemblyPath) &&
-            assemblyPath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) &&
-            File.Exists(assemblyPath))
+        var processPath = Environment.ProcessPath;
+
+        // A single-file publish runs from PopMark.exe itself, so start the
+        // bridge from the same executable.
+        if (!string.IsNullOrWhiteSpace(processPath) &&
+            !Path.GetFileNameWithoutExtension(processPath).Equals("dotnet", StringComparison.OrdinalIgnoreCase) &&
+            File.Exists(processPath))
         {
-            return assemblyPath;
+            return processPath;
         }
 
-        var processPath = Environment.ProcessPath;
+        // Framework-dependent runs through `dotnet PopMark.dll`: the assembly
+        // path is the backend, while the process path is the dotnet host.
+#pragma warning disable IL3000 // Assembly.Location is empty in single-file builds.
+        var assemblyPath = Assembly.GetEntryAssembly()?.Location;
+#pragma warning restore IL3000
+        if (!string.IsNullOrWhiteSpace(assemblyPath) && File.Exists(assemblyPath))
+            return assemblyPath;
+
         return !string.IsNullOrWhiteSpace(processPath) && File.Exists(processPath)
             ? processPath
             : null;

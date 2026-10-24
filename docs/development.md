@@ -29,7 +29,8 @@ snapshots it receives from the bridge and sends intent back.
 - Bun is available, and
 - `ui/src/index.tsx` (development) or `ui/dist/index.js` (bundled) can be found.
 
-Use `--legacy-ui` to force the old C# renderer, or run `PopMark --bridge` yourself when
+Use `--legacy-ui` only to inspect the retired C# renderer, or run `PopMark --bridge`
+yourself when
 working on the protocol. Environment overrides:
 
 | Variable | Purpose |

@@ -17,7 +17,7 @@ list of results.
 
 Playlists are expanded into individual tracks. PopMark asks `yt-dlp` for flat playlist
 metadata, which is fast but sometimes returns an entry with a placeholder title or no
-duration; playing that track fills it in.
+duration; playing that track fills it in from `mpv`.
 
 You can also pass a URL at launch:
 
@@ -25,72 +25,74 @@ You can also pass a URL at launch:
 PopMark.exe "https://www.youtube.com/watch?v=..."
 ```
 
-## The two views
+## Views and input modes
 
-| View | What it shows |
+| View / mode | What it does |
 | --- | --- |
-| **Playlist** | Now playing, progress, volume, and the full queue. This is the default. |
-| **Splash** | The PopMark splash art, the current title, progress, and volume, with the queue hidden. |
+| **Command Center** | Now playing, transport, volume, queue, tools, and shortcuts. |
+| **Focus View** | Large logo, waveform, current track, progress, and playback controls. |
+| **Command** | The bottom input owns printable text, Enter, history, and shortcuts. |
+| **Navigation** | The input blurs; printable keys are ignored and navigation keys work. |
+| **Modal** | Help, tools, and diagnostics own the keyboard until closed. |
 
-<kbd>Tab</kbd> switches between them, as do the `playlist` and `splash` commands. The
-splash view also has a clickable progress bar and volume slider.
+<kbd>F3</kbd> opens Focus View. <kbd>Tab</kbd> cycles command → navigation → focus.
+<kbd>Esc</kbd> returns one level. Only <kbd>Ctrl</kbd>+<kbd>Q</kbd> quits.
 
-Starting without a URL shows the animated splash once; press any key to continue. Pass a
-URL at launch to skip it.
+Focus View is not a command input: typing ordinary characters there does nothing. It
+supports playback and navigation shortcuts, and its progress bar is draggable.
 
 ## Commands
 
-Type `help` (or <kbd>?</kbd> with an empty input) to show the short list, and `controls`
-for the keyboard reference.
+Type `help` or press <kbd>F1</kbd> for the in-app command reference.
 
 | Command | Action |
 | --- | --- |
 | `add <url or search>` | Add a video, playlist, or search result. |
-| `play` / `pause` | Toggle playback. `r` is an alias. |
-| `next` / `previous` | Move one track forward or back. Aliases: `n`, `]`, `skip` / `prev`, `back`, `[`. |
-| `goto <# or title>` | Scroll the queue to a track, by number or partial title. Aliases: `jump`, `go to`, `song`. |
+| `play` / `pause` | Toggle playback. |
+| `next` / `previous` | Move one track forward or back. |
+| `goto <# or title>` | Focus a queue row by number or partial title. |
 | `shuffle` | Shuffle the upcoming tracks. The current track stays put. |
-| `stop` | Stop playback and clear the queue. Alias: `s`. |
-| `clear playlist` | Stop playback and empty the queue. Alias: `clear-playlist`. |
-| `clear` / `cls` | Redraw the screen without touching the queue. |
-| `splash` | Switch to the splash view. Aliases: `art`, `visual`, `visualizer`. |
-| `playlist` | Switch to the queue view. Aliases: `queue`, `menu`. |
-| `tools` | Show, install, pin, or clear `yt-dlp` and `mpv`. Alias: `doctor`. |
+| `stop` | Stop playback and clear the queue. |
+| `clear playlist` | Stop playback and empty the queue. |
+| `tools` | Open the tool management dialog. |
+| `tools install [yt-dlp\|mpv\|all]` | Install or repair a managed copy. |
+| `tools set <tool> <path>` | Pin an existing executable. |
+| `tools clear <tool>` | Remove a pinned path. |
+| `logs` | Open diagnostics. |
 | `version` | Show the app version. |
-| `help` / `controls` | Show commands or keyboard controls. |
-| `quit` | Stop playback, keep the queue, and exit. Aliases: `exit`, `q`. |
-
-`goto` only moves the visible queue; it does not start playback. Use the number shown in
-the queue, or part of a title.
+| `quit` | Stop playback, keep the queue, and exit. |
 
 ## Controls
 
 | Control | Action |
 | --- | --- |
-| <kbd>Space</kbd> | Play or pause when the command field is empty. |
-| <kbd>-</kbd> / <kbd>=</kbd> | Volume down or up by 10%. |
-| <kbd>Left</kbd> / <kbd>Right</kbd> | Seek backward or forward 10 seconds. |
-| <kbd>[</kbd> / <kbd>]</kbd> | Previous or next track. |
-| <kbd>Up</kbd> / <kbd>Down</kbd> | Scroll the queue one row. |
-| <kbd>PageUp</kbd> / <kbd>PageDown</kbd> | Scroll the queue five rows. |
-| <kbd>Home</kbd> / <kbd>End</kbd> | Jump to the top or bottom of the queue. |
-| <kbd>Tab</kbd> | Switch between the playlist and splash views. |
-| <kbd>Ctrl</kbd>+<kbd>L</kbd> | Clear and redraw the screen. |
-| <kbd>Esc</kbd> | Clear whatever is typed in the command field. |
-| <kbd>Enter</kbd> | Run the typed command. |
-
-Space, volume, track-skip, and scroll keys only act while the command field is empty.
-Typing `-`, `=`, `[`, or `]` into a command never changes the volume or skips a track.
+| `/` or click the input | Focus the command field |
+| <kbd>Tab</kbd> | Cycle command → navigation → focus view |
+| <kbd>Esc</kbd> | Leave input, close dialog, or return from Focus View |
+| <kbd>Space</kbd> | Play/pause outside command entry |
+| <kbd>n</kbd> / <kbd>p</kbd> | Next / previous track |
+| <kbd>↑</kbd> / <kbd>↓</kbd> | Move the queue selection |
+| <kbd>Enter</kbd> | Play the selected row outside command entry |
+| <kbd>Ctrl</kbd>+<kbd>P</kbd> | Toggle playback from anywhere |
+| <kbd>Ctrl</kbd>+<kbd>N</kbd> / <kbd>Ctrl</kbd>+<kbd>B</kbd> | Next / previous track |
+| <kbd>Ctrl</kbd>+<kbd>←</kbd> / <kbd>Ctrl</kbd>+<kbd>→</kbd> | Seek ±10 seconds |
+| <kbd>Ctrl</kbd>+<kbd>↑</kbd> / <kbd>Ctrl</kbd>+<kbd>↓</kbd> | Volume ±10% |
+| <kbd>Alt</kbd>+<kbd>←</kbd> / <kbd>Alt</kbd>+<kbd>→</kbd> | Seek ±10 seconds |
+| <kbd>F1</kbd> | Command reference |
+| <kbd>F2</kbd> | Playback tools |
+| <kbd>F3</kbd> | Focus View |
+| <kbd>F4</kbd> | Diagnostics |
+| <kbd>Ctrl</kbd>+<kbd>Q</kbd> | Quit |
 
 ### Mouse
 
 When the terminal supports mouse reporting:
 
 - Clicking a queue row starts that track.
-- Clicking the progress bar seeks to that point.
-- Clicking the volume slider sets the volume.
-- In the queue view the wheel scrolls three rows, unless the pointer is over the volume
-  slider, where it adjusts the volume. In the splash view the wheel adjusts the volume.
+- Press and drag the progress bar to seek; the timestamp updates while dragging.
+- Press and drag the volume slider to change volume.
+- The mouse wheel scrolls the queue.
+- Queue, tool, and dialog buttons are clickable.
 
 Mouse support depends on the terminal. Windows Terminal, Windows Console Host, and most
 modern terminals forward the events; some minimal consoles do not.
@@ -98,13 +100,13 @@ modern terminals forward the events; some minimal consoles do not.
 ## Playback behaviour
 
 - A track that ends advances to the next one automatically.
-- A track that fails within ten seconds of starting **stops** the queue and prints the
-  reason instead of skipping through every remaining song. That window exists because
-  `mpv` has to reach the network through `yt-dlp` before it can fail.
+- The displayed position is read from `mpv` while playing; pause freezes it and resume
+  continues from the same point.
+- Seeking updates the bar immediately and commits to `mpv` during/after the drag.
+- A track that fails within ten seconds of starting **stops** the queue and reports the
+  reason instead of skipping through every remaining song.
 - Volume is applied to the running player immediately and is remembered for the next
   launch.
-- Seeking is relative to the current position, and the displayed progress is clamped to
-  the track's duration.
 
 ## Leaving and coming back
 
@@ -117,8 +119,10 @@ For what is stored and how restore behaves when a URL is passed at launch, see
 
 ## When something goes wrong
 
-The status line under the queue carries the last message, including the reason a track
-would not play. For a message such as an HTTP 403, run the non-interactive test:
+The status line in Now Playing carries the last message, including the reason a track
+would not play. Press <kbd>F4</kbd> to inspect tool reports and backend stderr.
+
+For a message such as an HTTP 403, run the non-interactive test:
 
 ```powershell
 PopMark.exe play-test "https://www.youtube.com/watch?v=..." --seconds 10

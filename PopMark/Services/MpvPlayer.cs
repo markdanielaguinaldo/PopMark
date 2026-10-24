@@ -61,6 +61,7 @@ public sealed class MpvPlayer
         var startInfo = new ProcessStartInfo
         {
             FileName = mpvPath,
+            RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
@@ -90,6 +91,8 @@ public sealed class MpvPlayer
         {
             var process = Process.Start(startInfo)
                 ?? throw new InvalidOperationException("Unable to start mpv.");
+
+            process.StandardInput.Close();
 
             process.EnableRaisingEvents = true;
             process.Exited += (_, _) => _ = OnProcessExitedAsync(process);

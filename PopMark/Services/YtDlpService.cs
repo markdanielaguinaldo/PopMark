@@ -56,6 +56,7 @@ public sealed class YtDlpService
         var startInfo = new ProcessStartInfo
         {
             FileName = ToolLocator.ResolveExecutable("yt-dlp") ?? "yt-dlp",
+            RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
@@ -75,6 +76,9 @@ public sealed class YtDlpService
 
             var outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
             var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
+
+            process.StandardInput.Close();
+
             await process.WaitForExitAsync(cancellationToken);
 
             return new ProcessResult(process.ExitCode, await outputTask, await errorTask);

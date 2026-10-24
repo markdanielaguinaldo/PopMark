@@ -187,7 +187,7 @@ internal sealed class BridgeSession
                 case "add":
                     await RunBusyAsync("Adding to queue...", () =>
                         AddTargetAsync(request.Target ?? request.Value ?? request.Text ?? string.Empty));
-                    return true;
+                    return Acknowledge(request.Id);
 
                 case "seek":
                     await HandleSeekAsync(request);

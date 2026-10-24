@@ -255,12 +255,19 @@ inline status areas run text through `singleLine()` to strip ANSI and collapse n
 
 
 1. User presses `Ctrl+Q` or the backend exits unexpectedly.
-2. The frontend calls `renderer.destroy()` and exits.
+2. The frontend calls `renderer.destroy()` and awaits `renderer.closed` so the restore
+   sequences flush before `process.exit()`.
 3. `client.close()` sends `quit`, waits for the backend, then kills it if needed.
 4. The bridge calls `PlaybackQueue.StopPlaybackAndKeepQueueAsync()`, which fires
    `SnapshotChanged` and saves the queue.
 5. `PlaybackShutdownGuard` runs as a final safety net.
-6. `renderer.destroy()` restores the alternate screen and mouse modes.
+6. `renderer.destroy()` restores the alternate screen and mouse modes. If the Bun
+   process dies before that, `OpenTuiLauncher` writes the same reset sequences and
+   reports the exit code.
+
+Mouse reporting runs in drag mode (`enableMouseMovement: false`): motion is only sent
+while a button is held, which keeps hover from generating native work on every pointer
+move. The renderer targets 30 FPS.
 
 ## Tests
 

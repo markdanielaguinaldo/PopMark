@@ -58,6 +58,9 @@ Copy-Item (Join-Path $nativeSource "*") $nativeTarget -Recurse -Force
 
 Copy-Item $bun (Join-Path $out "bun.exe") -Force
 
+Write-Host "Copying documentation..."
+Copy-Item (Join-Path $repo "docs") (Join-Path $out "docs") -Recurse -Force
+
 @"
 PopMark $Version - OpenTUI portable build
 =========================================

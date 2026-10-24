@@ -513,6 +513,7 @@ export function App(props: {
     quitting = true;
     await client.close();
     renderer.destroy();
+    await renderer.closed.catch(() => undefined);
     process.exit(0);
   }
 
@@ -782,7 +783,7 @@ export function App(props: {
   });
 
   const timers = [
-    setInterval(() => setClock(Date.now()), 250),
+    setInterval(() => setClock(Date.now()), 500),
   ];
 
   onCleanup(() => {

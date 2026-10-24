@@ -129,6 +129,11 @@ very small window sizes.
 Running inside an IDE's embedded console, a redirected pipe, or a terminal that strips
 escape sequences will produce a poor result; use a real console window.
 
+If the OpenTUI process exits unexpectedly, the launcher resets the terminal before
+returning to the shell, so mouse reports should not spill into the prompt. Details are
+written to `%LOCALAPPDATA%\PopMark\logs\opentui.log`; include that file when reporting a
+crash. The queue is saved continuously and will be restored on the next launch.
+
 ## Mouse clicks do nothing
 
 Mouse reporting depends on the terminal. Confirm the terminal forwards mouse events, and

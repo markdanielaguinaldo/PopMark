@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Reflection;
+using System.Text;
 
 namespace PopMark.Helpers.OpenTui;
 
@@ -37,8 +38,24 @@ internal static class OpenTuiLauncher
         {
             FileName = bun.Value.FileName,
             WorkingDirectory = workingDirectory,
-            UseShellExecute = false
+            UseShellExecute = false,
+            RedirectStandardError = true
         };
+
+        var uiLogPath = UiLogPath();
+        if (uiLogPath is not null)
+        {
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(uiLogPath)!);
+                File.Delete(uiLogPath);
+            }
+            catch
+            {
+            }
+        }
+
+        var uiLog = new StringBuilder();
 
         var arguments = new List<string>();
         if (ui.Value.IsSource)
@@ -72,14 +89,103 @@ internal static class OpenTuiLauncher
             if (process is null)
                 return false;
 
-            process.WaitForExit();
+            process.ErrorDataReceived += (_, args) =>
+            {
+                if (args.Data is null)
+                    return;
+
+                lock (uiLog)
+                    uiLog.AppendLine(args.Data);
+            };
+            process.BeginErrorReadLine();
+
+            // Keep the terminal usable even if the OpenTUI process dies without
+            // restoring raw mode, the alternate screen, or mouse reporting.
+            try
+            {
+                process.WaitForExit();
+            }
+            finally
+            {
+                RestoreTerminal();
+            }
+
             exitCode = process.ExitCode;
+
+            if (exitCode != 0)
+                ReportUiFailure(exitCode, uiLog, uiLogPath);
+
             return true;
         }
         catch
         {
             return false;
         }
+    }
+
+    /// <summary>
+    /// Best-effort reset for terminals left in OpenTUI's raw/alternate-screen mode.
+    /// Writing these on a clean exit is harmless and keeps a crashed session from
+    /// spilling mouse reports into the shell prompt.
+    /// </summary>
+    private static void RestoreTerminal()
+    {
+        try
+        {
+            Console.Out.Write(
+                "\u001b[0m" +
+                "\u001b[?1000l\u001b[?1002l\u001b[?1003l\u001b[?1006l\u001b[?1015l" +
+                "\u001b[?1004l\u001b[?2004l\u001b[?2026l" +
+                "\u001b[0 q\u001b[?25h\u001b[?1049l");
+            Console.Out.Flush();
+        }
+        catch
+        {
+        }
+    }
+
+    private static string? UiLogPath()
+    {
+        try
+        {
+            var root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            return string.IsNullOrWhiteSpace(root)
+                ? null
+                : Path.Combine(root, "PopMark", "logs", "opentui.log");
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static void ReportUiFailure(int exitCode, StringBuilder log, string? logPath)
+    {
+        string? details;
+        lock (log)
+            details = log.ToString().Trim();
+
+        if (logPath is not null)
+        {
+            try
+            {
+                File.WriteAllText(logPath, details);
+            }
+            catch
+            {
+            }
+        }
+
+        Console.Error.WriteLine();
+        Console.Error.WriteLine($"[PopMark] The OpenTUI interface stopped unexpectedly (exit code {exitCode}).");
+        if (!string.IsNullOrWhiteSpace(details))
+        {
+            var tail = details.Length > 4000 ? details[^4000..] : details;
+            Console.Error.WriteLine(tail);
+        }
+
+        if (logPath is not null)
+            Console.Error.WriteLine($"[PopMark] Details saved to {logPath}");
     }
 
     private static bool CanLaunchFor(string[] args, out string? startupUrl)

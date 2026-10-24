@@ -141,7 +141,7 @@ export function Equalizer(props: { active: Accessor<boolean>; bars?: number; col
 
   const timer = setInterval(() => {
     if (props.active()) setTick((value) => value + 1);
-  }, 110);
+  }, 190);
 
   onCleanup(() => clearInterval(timer));
 

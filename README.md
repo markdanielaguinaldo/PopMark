@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/cover.png" alt="PopMark" width="760">
+  <img src="docs/cover.png" alt="PopMark — OpenTUI edition" width="100%">
 </p>
 
 <p align="center">

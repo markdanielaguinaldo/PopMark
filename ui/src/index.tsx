@@ -12,8 +12,11 @@ if (!process.stdout.isTTY) {
 const renderer = await createCliRenderer({
   exitOnCtrlC: false,
   useMouse: true,
+  // Only report motion while a button is held. Hover is unused, and this avoids
+  // a flood of native hit-test work whenever the pointer crosses the window.
+  enableMouseMovement: false,
   autoFocus: false,
-  targetFps: 60,
+  targetFps: 30,
   screenMode: "alternate-screen",
   clearOnShutdown: true,
   backgroundColor: theme.bg,
@@ -30,21 +33,34 @@ function destroyRenderer() {
   }
 }
 
+async function shutdown(code: number) {
+  destroyRenderer();
+  // destroy() writes the terminal restore sequences asynchronously. Exiting
+  // before they flush leaves the shell in mouse-reporting/alternate-screen mode.
+  await renderer.closed.catch(() => undefined);
+  process.exit(code);
+}
+
 process.on("exit", destroyRenderer);
 process.on("SIGINT", () => {
-  destroyRenderer();
-  process.exit(0);
+  void shutdown(0);
 });
 process.on("SIGTERM", () => {
-  destroyRenderer();
-  process.exit(0);
+  void shutdown(0);
+});
+process.on("uncaughtException", (error) => {
+  console.error(error);
+  void shutdown(1);
+});
+process.on("unhandledRejection", (error) => {
+  console.error(error);
+  void shutdown(1);
 });
 
 try {
   renderer.setTerminalTitle("PopMark");
   await render(() => <App />, renderer);
 } catch (error) {
-  destroyRenderer();
   console.error(error);
-  process.exit(1);
+  await shutdown(1);
 }

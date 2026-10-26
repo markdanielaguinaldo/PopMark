@@ -134,8 +134,10 @@ dotnet run --project .\PopMark\PopMark.csproj -- --legacy-ui
   library.
 - **Queue restore** — current track, upcoming tracks, and volume return on the next
   launch.
-- **Focus View** — a large now-playing screen with a waveform, progress, and track info.
-- **Diagnostics** — <kbd>F4</kbd> collects tool reports and backend stderr without
+- **Focus View** - a large now-playing screen with a waveform, progress, and track info.
+- **Themes** - <kbd>F5</kbd> cycles five color schemes; <kbd>Shift</kbd>+<kbd>F5</kbd>
+  goes back. The choice is remembered for the next launch.
+- **Diagnostics** - <kbd>F4</kbd> collects tool reports and backend stderr without
   painting over the renderer.
 - **Tool management** — install, pin, clear, and inspect `yt-dlp` / `mpv` from the UI.
 - **Legacy backup** - the original C# terminal UI is retired; a self-contained
@@ -163,6 +165,8 @@ dotnet run --project .\PopMark\PopMark.csproj -- --legacy-ui
 | <kbd>F2</kbd> | Playback tools |
 | <kbd>F3</kbd> | Focus View |
 | <kbd>F4</kbd> | Diagnostics |
+| <kbd>F5</kbd> | Next color theme |
+| <kbd>Shift</kbd>+<kbd>F5</kbd> | Previous color theme |
 | <kbd>Ctrl</kbd>+<kbd>Q</kbd> | Quit |
 | Click a queue row | Play that track |
 | Drag or click the progress bar | Seek to that timestamp |
@@ -174,8 +178,8 @@ Only <kbd>Ctrl</kbd>+<kbd>Q</kbd> quits. Plain <kbd>q</kbd> is not a quit key.
 
 Focus View supports the same playback and navigation shortcuts, including
 <kbd>Space</kbd>, <kbd>n</kbd>/<kbd>p</kbd>, arrow keys, <kbd>s</kbd>, <kbd>F1</kbd>,
-<kbd>F2</kbd>, <kbd>F4</kbd>, and <kbd>Esc</kbd>/<kbd>F3</kbd> to return. Drag its
-progress bar to seek.
+<kbd>F2</kbd>, <kbd>F4</kbd>, <kbd>F5</kbd>, and <kbd>Esc</kbd>/<kbd>F3</kbd> to
+return. Drag its progress bar to seek.
 
 ## Commands
 
@@ -229,6 +233,7 @@ Everything PopMark remembers lives under `%LOCALAPPDATA%\PopMark`:
 | `queue.json` | Current track, previous and upcoming tracks, volume |
 | `tools.json` | Pinned `yt-dlp` and `mpv` paths |
 | `sessions.json` | Live `mpv` processes, used to clean up after a crash |
+| `theme.json` | Active color theme (`midnight`, `ember`, `sakura`, `evergreen`, or `mono`) |
 | `tools\` | Tools installed by PopMark itself |
 
 PopMark has no account system and no telemetry. It talks to YouTube through `yt-dlp`

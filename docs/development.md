@@ -88,7 +88,7 @@ ui/
 ├── src/
 │   ├── index.tsx             renderer lifecycle and entry point
 │   ├── app.tsx               state, bridge wiring, keyboard dispatch, layout
-│   ├── theme.ts              palette and brand gradient
+│   ├── theme.ts              reactive palettes, persistence, brand gradient
 │   ├── bridge/
 │   │   ├── protocol.ts       message types and line parser
 │   │   ├── backend.ts        backend discovery and spawning
@@ -241,8 +241,17 @@ The UI has four explicit modes: `command`, `navigation`, `focus`, and `modal`.
 
 `Footer` owns focus through an effect driven by the mode, and the input only becomes
 focused in command mode. Opening a dialog or Focus View records the previous mode and
-restores it on close. Escape, Tab, Enter, and F1–F4 have fixed transitions; see the
+restores it on close. Escape, Tab, Enter, and F1-F5 have fixed transitions; see the
 help dialog for the current map.
+
+## Themes
+
+`theme.ts` exposes a Solid mutable store. Every component reads `theme.accent` or
+another palette key inside JSX, so `applyTheme` retints the whole interface without
+remounting it. `cycleTheme` wraps through five palettes: Midnight, Ember, Sakura,
+Evergreen, and Mono. F5 cycles forward, Shift+F5 backward, and the toast names the new
+theme. The selection is saved to `%LOCALAPPDATA%\PopMark\theme.json`; `POPMARK_THEME`
+overrides the startup choice without rewriting the file.
 
 All C# child processes used for tools, mpv, yt-dlp, `where.exe`, and session discovery
 set `UseShellExecute=false`, redirect stdout/stderr, and generally `CreateNoWindow`.

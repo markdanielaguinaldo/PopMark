@@ -8,6 +8,7 @@ import { HelpDialog, LogsDialog, ToolsDialog } from "../src/components/Dialogs";
 import { NowPlaying } from "../src/components/NowPlaying";
 import { Splash } from "../src/components/Splash";
 import type { LogEntry } from "../src/lib/logs";
+import { applyTheme, themeId } from "../src/theme";
 
 function seed(emit: (message: BackendMessage) => void) {
   emit({ type: "hello", protocol: 1, app: "PopMark", version: "1.1.2" });
@@ -95,6 +96,7 @@ function fakeBackend() {
 }
 
 test("renders the queue and sends transport shortcuts", async () => {
+  applyTheme("midnight", false);
   const fake = fakeBackend();
   const setup = await testRender(() => <App createClient={fake.factory} />, {
     width: 120,
@@ -135,6 +137,15 @@ test("renders the queue and sends transport shortcuts", async () => {
     setup.mockInput.pressArrow("up", { ctrl: true });
     await setup.renderOnce();
     expect(fake.sent).toContainEqual({ type: "volume", percent: 80 });
+
+    setup.mockInput.pressKey("F5");
+    await setup.renderOnce();
+    expect(themeId()).toBe("ember");
+
+    setup.mockInput.pressKey("F5", { shift: true });
+    await setup.renderOnce();
+    expect(themeId()).toBe("midnight");
+    applyTheme("midnight", false);
 
     const queueRow = setup.renderer.root.findDescendantById("queue-row-2");
     expect(queueRow).toBeDefined();

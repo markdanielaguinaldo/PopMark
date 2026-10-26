@@ -29,7 +29,7 @@ import { NowPlaying } from "./components/NowPlaying";
 import { QueuePanel } from "./components/QueuePanel";
 import { Sidebar } from "./components/Sidebar";
 import { Splash } from "./components/Splash";
-import { ActionButton } from "./components/Widgets";
+import { ActionButton, Tint } from "./components/Widgets";
 import { clamp } from "./lib/format";
 import { appendLog, makeLogEntry, type LogEntry } from "./lib/logs";
 import { liveElapsedSeconds, safeDuration } from "./lib/playback";
@@ -42,7 +42,7 @@ import {
   rememberCommand,
   type HistoryState,
 } from "./lib/playlist";
-import { theme } from "./theme";
+import { theme, cycleTheme } from "./theme";
 
 type Dialog = "help" | "tools" | "logs" | null;
 type InputMode = "command" | "navigation" | "focus" | "modal";
@@ -112,6 +112,7 @@ export function App(props: {
   const [mode, setMode] = createSignal<InputMode>("command");
   const [selectedIndex, setSelectedIndex] = createSignal(-1);
   const [clock, setClock] = createSignal(Date.now());
+  const [themeToast, setThemeToast] = createSignal<string>();
 
   let inputRef: InputRenderable | undefined;
   let history: HistoryState = initialHistory();
@@ -125,6 +126,7 @@ export function App(props: {
   let modeBeforeFocus: InputMode = "command";
   let dialogBeforeOverlay: Dialog = null;
   let lastFollowedCurrentIndex = -2;
+  let themeToastTimer: ReturnType<typeof setTimeout> | undefined;
 
   const editing = () => mode() === "command";
 
@@ -340,6 +342,13 @@ export function App(props: {
     setMode("focus");
   }
 
+  function changeTheme(direction: 1 | -1) {
+    const next = cycleTheme(direction);
+    setThemeToast(`${next.name} · ${next.description}`);
+    if (themeToastTimer) clearTimeout(themeToastTimer);
+    themeToastTimer = setTimeout(() => setThemeToast(undefined), 2200);
+  }
+
   function closeFocus() {
     setSplash(false);
     const restore = modeBeforeFocus;
@@ -540,6 +549,12 @@ export function App(props: {
       key.preventDefault();
       if (mode() === "modal" && dialog() === "logs") closeDialog();
       else openLogs();
+      return;
+    }
+
+    if (key.name === "f5") {
+      key.preventDefault();
+      changeTheme(key.shift ? -1 : 1);
       return;
     }
 
@@ -788,6 +803,7 @@ export function App(props: {
 
   onCleanup(() => {
     for (const timer of timers) clearInterval(timer);
+    if (themeToastTimer) clearTimeout(themeToastTimer);
     void client.close();
   });
 
@@ -924,6 +940,30 @@ export function App(props: {
 
       <Show when={dialog() === "logs"} fallback={<box height={0} />}>
         <LogsDialog logs={store.logs} onClose={closeDialog} narrow={narrow()} />
+      </Show>
+
+      <Show when={themeToast() !== undefined} fallback={<box height={0} />}>
+        <box
+          id="theme-toast"
+          position="absolute"
+          bottom={4}
+          right={2}
+          zIndex={70}
+          paddingLeft={1}
+          paddingRight={1}
+          backgroundColor={theme.surfaceRaised}
+          border
+          borderStyle="rounded"
+          borderColor={theme.borderStrong}
+        >
+          <text selectable={false} wrapMode="none">
+            <Tint color={theme.accent} bold>
+              THEME
+            </Tint>
+            <Tint color={theme.faint}> · </Tint>
+            <Tint color={theme.text}>{themeToast()}</Tint>
+          </text>
+        </box>
       </Show>
     </box>
   );

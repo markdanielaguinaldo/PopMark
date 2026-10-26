@@ -117,7 +117,7 @@ export function Footer(props: {
           when={!props.narrow}
           fallback={
             <text fg={theme.faint} selectable={false} wrapMode="none">
-              F1 help · F2 tools · F3 focus · F4 logs
+              F1 help · F2 tools · F3 focus · F4 logs · F5 theme
             </text>
           }
         >
@@ -129,7 +129,9 @@ export function Footer(props: {
             <Tint color={theme.accent}>[F3]</Tint>
             <Tint color={theme.muted}> focus </Tint>
             <Tint color={theme.accent}>[F4]</Tint>
-            <Tint color={theme.muted}> logs</Tint>
+            <Tint color={theme.muted}> logs </Tint>
+            <Tint color={theme.accent}>[F5]</Tint>
+            <Tint color={theme.muted}> theme</Tint>
           </text>
         </Show>
         <box flexGrow={1} />

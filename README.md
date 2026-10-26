@@ -128,7 +128,9 @@ dotnet run --project .\PopMark\PopMark.csproj -- --legacy-ui
   responsive layout.
 - **Live playback position** — elapsed time and progress come from MPV through IPC, not
   a local guess.
-- **Drag-to-seek and drag-to-volume** — press and hold either slider, then slide.
+- **Drag-to-seek and drag-to-volume** - press and hold either slider, then slide.
+- **Compact transport** - previous, play/pause, next, stop, and shuffle share one row with
+  the volume slider; no keyboard legends crowd the buttons.
 - **YouTube queue** — add videos, playlists, or a search result from the terminal.
 - **No downloads** — audio is streamed through `mpv`; PopMark keeps a queue, not a music
   library.

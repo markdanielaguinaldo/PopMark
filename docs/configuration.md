@@ -76,6 +76,7 @@ Everything PopMark remembers lives under `%LOCALAPPDATA%\PopMark`:
 | `queue.json` | Current track, previous tracks, upcoming tracks, and volume. |
 | `tools.json` | Pinned `yt-dlp` and `mpv` paths. |
 | `sessions.json` | Live `mpv` process ids and IPC paths, used for crash cleanup. |
+| `theme.json` | Active OpenTUI color theme. |
 | `tools\<tool>\` | Tools installed by PopMark. |
 
 Delete a file to reset just that part, or delete the folder to reset everything.

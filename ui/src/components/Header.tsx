@@ -1,5 +1,5 @@
 import { For, Show, createSignal, onCleanup } from "solid-js";
-import { theme, themeInfo } from "../theme";
+import { theme } from "../theme";
 import { StatusChip, Tint } from "./Widgets";
 import type { ToolInfo } from "../bridge/protocol";
 
@@ -52,12 +52,6 @@ export function Header(props: {
             {props.backendVersion ? `v${props.backendVersion}` : "connecting…"}
           </Tint>
         </text>
-        <Show when={!props.compact()}>
-          <text selectable={false} wrapMode="none">
-            <Tint color={theme.faint}>·</Tint>
-            <Tint color={theme.dim}> {themeInfo().name}</Tint>
-          </text>
-        </Show>
       </box>
 
       <box flexDirection="row" alignItems="center" gap={1} flexShrink={0}>

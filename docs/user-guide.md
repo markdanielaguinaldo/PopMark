@@ -30,7 +30,7 @@ PopMark.exe "https://www.youtube.com/watch?v=..."
 | View / mode | What it does |
 | --- | --- |
 | **Command Center** | Now playing, transport, volume, queue, tools, and shortcuts. |
-| **Focus View** | Large logo, chibi owl on wide terminals, waveform, current track, progress, and playback controls. |
+| **Focus View** | Large logo, waveform, current track, progress, and playback controls. |
 | **Command** | The bottom input owns printable text, Enter, history, and shortcuts. |
 | **Navigation** | The input blurs; printable keys are ignored and navigation keys work. |
 | **Modal** | Help, tools, and diagnostics own the keyboard until closed. |
@@ -39,25 +39,7 @@ PopMark.exe "https://www.youtube.com/watch?v=..."
 <kbd>Esc</kbd> returns one level. Only <kbd>Ctrl</kbd>+<kbd>Q</kbd> quits.
 
 Focus View is not a command input: typing ordinary characters there does nothing. It
-supports playback and navigation shortcuts, and its progress bar is draggable. On
-terminals at least 104 columns wide and 26 rows tall, a chibi owl appears on the left.
-
-## Themes
-
-Press <kbd>F5</kbd> to cycle color schemes and <kbd>Shift</kbd>+<kbd>F5</kbd> to go
-back. A small toast names the new theme, and the choice is saved for the next launch.
-
-| Theme | Palette |
-| --- | --- |
-| **Midnight** | teal, pink, deep navy |
-| **Ember** | amber, coral, warm charcoal |
-| **Sakura** | blossom pink, violet, plum |
-| **Evergreen** | moss, mint, forest black |
-| **Mono** | silver on graphite |
-
-The Focus View owl, waveform, borders, queue selection, and transport controls all
-follow the active theme. Set `POPMARK_THEME` to one of the theme IDs to choose the
-startup theme without changing the saved value.
+supports playback and navigation shortcuts, and its progress bar is draggable.
 
 ## Commands
 
@@ -100,8 +82,6 @@ Type `help` or press <kbd>F1</kbd> for the in-app command reference.
 | <kbd>F2</kbd> | Playback tools |
 | <kbd>F3</kbd> | Focus View |
 | <kbd>F4</kbd> | Diagnostics |
-| <kbd>F5</kbd> | Next color theme |
-| <kbd>Shift</kbd>+<kbd>F5</kbd> | Previous color theme |
 | <kbd>Ctrl</kbd>+<kbd>Q</kbd> | Quit |
 
 ### Mouse

@@ -133,12 +133,6 @@ export function HelpDialog(props: { onClose: () => void; narrow: boolean }) {
             <Line>
               <Tint color={theme.accent}>F4</Tint>
               <Tint color={theme.dim}> diagnostics  </Tint>
-              <Tint color={theme.accent}>F5</Tint>
-              <Tint color={theme.dim}> theme  </Tint>
-              <Tint color={theme.accent}>shift+F5</Tint>
-              <Tint color={theme.dim}> previous theme</Tint>
-            </Line>
-            <Line>
               <Tint color={theme.accent}>tab</Tint>
               <Tint color={theme.dim}> command → navigation → focus  </Tint>
               <Tint color={theme.accent}>esc</Tint>

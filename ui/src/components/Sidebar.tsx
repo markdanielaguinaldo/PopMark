@@ -20,9 +20,11 @@ function ShortcutRow(props: { keys: string; label: string; onPress?: () => void 
           : undefined
       }
     >
-      <text fg={theme.accent} selectable={false} wrapMode="none" width={10}>
-        {props.keys.padEnd(10, " ")}
-      </text>
+      <box width={10} height={1} flexShrink={0} backgroundColor={theme.surface}>
+        <text fg={theme.accent} selectable={false} wrapMode="none" width={10}>
+          {props.keys.padEnd(10, " ")}
+        </text>
+      </box>
       <text fg={theme.textSoft} selectable={false} wrapMode="none" truncate flexGrow={1} minWidth={0}>
         {props.label}
       </text>

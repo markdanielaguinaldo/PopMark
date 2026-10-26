@@ -110,6 +110,7 @@ test("renders the queue and sends transport shortcuts", async () => {
     const frame = setup.captureCharFrame();
     expect(frame).toContain("NOW PLAYING");
     expect(frame).toContain("Test Track");
+    expect(frame).not.toContain("[F1]S");
     expect(frame).toContain("Upcoming Track");
     expect(frame).toContain("PLAYING");
     expect(frame).toContain("v1.1.2");

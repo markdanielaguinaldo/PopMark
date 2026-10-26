@@ -233,6 +233,10 @@ export function NowPlaying(props: {
         </Show>
       </box>
 
+      <Show when={!props.tiny} fallback={<box height={0} />}>
+        <box height={1} flexShrink={0} />
+      </Show>
+
       <Show when={props.compact && !props.tiny} fallback={<box height={0} />}>
         <box flexDirection="row" gap={1} alignItems="center" height={1} flexShrink={0} minWidth={0}>
           <text

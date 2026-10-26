@@ -53,10 +53,13 @@ back. A small toast names the new theme, and the choice is saved for the next la
 | **Sakura** | blossom pink, violet, plum |
 | **Evergreen** | moss, mint, forest black |
 | **Mono** | silver on graphite |
+| **Ruby** | scarlet, rose, inked crimson |
+| **Cascade** | gold, honey, dusky amber |
+| **Random** | picks one of the palettes above each time it is selected |
 
 The waveform, borders, queue selection, and transport controls all follow the active
 theme. Set `POPMARK_THEME` to one of the theme IDs to choose the startup theme without
-changing the saved value.
+changing the saved value. `random` picks a fresh palette on every launch.
 
 ## Commands
 

@@ -34,11 +34,15 @@ export const themeOptions = [
   { id: "sakura", name: "Sakura", description: "blossom · violet · plum" },
   { id: "evergreen", name: "Evergreen", description: "moss · mint · forest" },
   { id: "mono", name: "Mono", description: "silver · graphite" },
+  { id: "ruby", name: "Ruby", description: "scarlet · rose · ink" },
+  { id: "cascade", name: "Cascade", description: "gold · honey · dusk" },
+  { id: "random", name: "Random", description: "surprise palette" },
 ] as const;
 
 export type ThemeId = (typeof themeOptions)[number]["id"];
+export type PaletteId = Exclude<ThemeId, "random">;
 
-const palettes: Record<ThemeId, Theme> = {
+const palettes: Record<PaletteId, Theme> = {
   midnight: {
     bg: "#080b11",
     surface: "#0f1520",
@@ -154,10 +158,69 @@ const palettes: Record<ThemeId, Theme> = {
     selectedRow: "#22222a",
     previousRow: "#0e0e11",
   },
+  ruby: {
+    bg: "#0d0709",
+    surface: "#170b0f",
+    surfaceRaised: "#221017",
+    surfaceHover: "#2d1520",
+    border: "#4a2230",
+    borderStrong: "#6d2f42",
+    text: "#f9e8ee",
+    textSoft: "#dcb6c1",
+    muted: "#b07f8e",
+    dim: "#7d5562",
+    faint: "#4d3039",
+    accent: "#ff5c7a",
+    accentSoft: "#9a2f47",
+    accentInk: "#2a0710",
+    highlight: "#ff9ecb",
+    info: "#ffb86b",
+    warning: "#ffd166",
+    danger: "#ff4d4d",
+    currentRow: "#3a121d",
+    selectedRow: "#2b121a",
+    previousRow: "#120a0d",
+  },
+  cascade: {
+    bg: "#0d0b06",
+    surface: "#17130b",
+    surfaceRaised: "#221b10",
+    surfaceHover: "#2d2315",
+    border: "#4a3a1f",
+    borderStrong: "#6d5530",
+    text: "#f8f0d8",
+    textSoft: "#ddcba1",
+    muted: "#ac9470",
+    dim: "#7b664b",
+    faint: "#4c3e2d",
+    accent: "#ffcc4d",
+    accentSoft: "#9a7a1f",
+    accentInk: "#2a1e03",
+    highlight: "#ff9f5a",
+    info: "#7fd8ff",
+    warning: "#ffd166",
+    danger: "#ff6b5c",
+    currentRow: "#3a2c0f",
+    selectedRow: "#2b2210",
+    previousRow: "#120f09",
+  },
 };
 
 function isThemeId(value: unknown): value is ThemeId {
   return themeOptions.some((option) => option.id === value);
+}
+
+const paletteIds = themeOptions
+  .map((option) => option.id)
+  .filter((id): id is PaletteId => id !== "random");
+
+const [activePaletteId, setActivePaletteId] = createSignal<PaletteId>("midnight");
+
+/** Picks a palette that is not the one currently on screen when possible. */
+function pickRandomPaletteId(exclude?: PaletteId): PaletteId {
+  const pool = exclude ? paletteIds.filter((id) => id !== exclude) : paletteIds;
+  const candidates = pool.length > 0 ? pool : paletteIds;
+  return candidates[Math.floor(Math.random() * candidates.length)];
 }
 
 function themeStatePath(): string {
@@ -192,22 +255,36 @@ function saveThemeId(id: ThemeId) {
 }
 
 const initialThemeId = loadThemeId();
+const initialPaletteId = initialThemeId === "random" ? pickRandomPaletteId() : initialThemeId;
+setActivePaletteId(initialPaletteId);
 
 /**
  * Reactive palette. Components read `theme.accent` in JSX, so assigning a new
  * palette retints the whole interface without remounting the app.
  */
-export const theme = createMutable<Theme>({ ...palettes[initialThemeId] });
+export const theme = createMutable<Theme>({ ...palettes[initialPaletteId] });
 
 export const [themeId, setThemeId] = createSignal<ThemeId>(initialThemeId);
+
+const optionForPalette = (id: PaletteId) =>
+  themeOptions.find((option) => option.id === id) ?? themeOptions[0];
+
+/** The palette that is currently painted, even when Random chose it. */
+export const activeThemeInfo = () => optionForPalette(activePaletteId());
 
 export const themeInfo = () =>
   themeOptions.find((option) => option.id === themeId()) ?? themeOptions[0];
 
+/** Header label that keeps Random visible while naming the picked palette. */
+export const themeLabel = () =>
+  themeId() === "random" ? `Random · ${activeThemeInfo().name}` : activeThemeInfo().name;
+
 export const brandGradient = () => [theme.accent, theme.info, theme.highlight] as const;
 
 export function applyTheme(id: ThemeId, persist = true) {
-  Object.assign(theme, palettes[id]);
+  const paletteId = id === "random" ? pickRandomPaletteId(activePaletteId()) : id;
+  setActivePaletteId(paletteId);
+  Object.assign(theme, palettes[paletteId]);
   setThemeId(id);
   if (persist) saveThemeId(id);
 }

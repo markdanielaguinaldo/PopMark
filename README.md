@@ -135,8 +135,9 @@ dotnet run --project .\PopMark\PopMark.csproj -- --legacy-ui
 - **Queue restore** — current track, upcoming tracks, and volume return on the next
   launch.
 - **Focus View** - a large now-playing screen with a waveform, progress, and track info.
-- **Themes** - <kbd>F5</kbd> cycles five color schemes; <kbd>Shift</kbd>+<kbd>F5</kbd>
-  goes back. The choice is remembered for the next launch.
+- **Themes** - <kbd>F5</kbd> cycles eight color schemes; <kbd>Shift</kbd>+<kbd>F5</kbd>
+  goes back. The choice is remembered for the next launch; the **Random** scheme picks
+  a fresh palette each time it is selected.
 - **Diagnostics** - <kbd>F4</kbd> collects tool reports and backend stderr without
   painting over the renderer.
 - **Tool management** — install, pin, clear, and inspect `yt-dlp` / `mpv` from the UI.
@@ -233,7 +234,7 @@ Everything PopMark remembers lives under `%LOCALAPPDATA%\PopMark`:
 | `queue.json` | Current track, previous and upcoming tracks, volume |
 | `tools.json` | Pinned `yt-dlp` and `mpv` paths |
 | `sessions.json` | Live `mpv` processes, used to clean up after a crash |
-| `theme.json` | Active color theme (`midnight`, `ember`, `sakura`, `evergreen`, or `mono`) |
+| `theme.json` | Active color theme (`midnight`, `ember`, `sakura`, `evergreen`, `mono`, `ruby`, `cascade`, or `random`) |
 | `tools\` | Tools installed by PopMark itself |
 
 PopMark has no account system and no telemetry. It talks to YouTube through `yt-dlp`

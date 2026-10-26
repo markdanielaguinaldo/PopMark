@@ -28,7 +28,7 @@ export function Footer(props: {
   const modeLabel = () => {
     switch (props.mode()) {
       case "command":
-        return "TYPING";
+        return "CMD";
       case "navigation":
         return "NAV";
       case "focus":
@@ -60,13 +60,18 @@ export function Footer(props: {
       flexShrink={0}
       flexDirection="column"
       border={["top"]}
-      borderColor={theme.border}
+      borderColor={props.mode() === "command" ? theme.accentSoft : theme.border}
       backgroundColor={theme.bg}
       paddingLeft={1}
       paddingRight={1}
     >
       <box flexDirection="row" gap={1} alignItems="center" height={1}>
-        <text fg={theme.accent} attributes={TextAttributes.BOLD} selectable={false} wrapMode="none">
+        <text
+          fg={theme.accent}
+          attributes={TextAttributes.BOLD}
+          selectable={false}
+          wrapMode="none"
+        >
           ›
         </text>
         <input
@@ -94,6 +99,11 @@ export function Footer(props: {
             props.onSubmit(value);
           }}
         />
+        <Show when={!props.narrow} fallback={<box height={0} />}>
+          <text fg={theme.faint} selectable={false} wrapMode="none">
+            enter
+          </text>
+        </Show>
         <box
           flexShrink={0}
           height={1}
@@ -106,7 +116,12 @@ export function Footer(props: {
             else if (props.mode() === "navigation") props.onFocusInput();
           }}
         >
-          <text fg={modeForeground()} selectable={false} wrapMode="none">
+          <text
+            fg={modeForeground()}
+            attributes={TextAttributes.BOLD}
+            selectable={false}
+            wrapMode="none"
+          >
             {modeLabel()}
           </text>
         </box>
@@ -131,7 +146,10 @@ export function Footer(props: {
             <Tint color={theme.accent}>[F4]</Tint>
             <Tint color={theme.muted}> logs </Tint>
             <Tint color={theme.accent}>[F5]</Tint>
-            <Tint color={theme.muted}> theme</Tint>
+            <Tint color={theme.muted}> theme </Tint>
+            <Tint color={theme.faint}> · </Tint>
+            <Tint color={theme.accent}>[ctrl+q]</Tint>
+            <Tint color={theme.muted}> quit</Tint>
           </text>
         </Show>
         <box flexGrow={1} />

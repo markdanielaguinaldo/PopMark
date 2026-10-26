@@ -5,7 +5,35 @@ import { For, Show, createEffect, createSignal } from "solid-js";
 import type { PlaylistEntry } from "../lib/playlist";
 import { formatTime, pluralize } from "../lib/format";
 import { theme } from "../theme";
-import { ActionButton, Panel, SectionLabel, Tint } from "./Widgets";
+import { ActionButton, Chip, Panel, Tint } from "./Widgets";
+
+type QueueSection = {
+  kind: PlaylistEntry["kind"];
+  label: string;
+  entries: PlaylistEntry[];
+};
+
+function sectionsOf(entries: PlaylistEntry[]): QueueSection[] {
+  const sections: QueueSection[] = [];
+  for (const entry of entries) {
+    const last = sections[sections.length - 1];
+    if (!last || last.kind !== entry.kind) {
+      sections.push({
+        kind: entry.kind,
+        label: entry.kind === "previous" ? "HISTORY" : entry.kind === "current" ? "NOW" : "UP NEXT",
+        entries: [],
+      });
+    }
+    sections[sections.length - 1].entries.push(entry);
+  }
+  return sections;
+}
+
+function sectionColor(kind: PlaylistEntry["kind"]): string {
+  if (kind === "current") return theme.accent;
+  if (kind === "pending") return theme.highlight;
+  return theme.dim;
+}
 
 function QueueRow(props: {
   entry: PlaylistEntry;
@@ -32,11 +60,31 @@ function QueueRow(props: {
           : "·";
 
   const markerColor = () =>
-    props.entry.kind === "current" || props.selected
+    props.entry.kind === "current"
       ? theme.accent
-      : props.entry.kind === "previous"
-        ? theme.faint
-        : theme.dim;
+      : props.selected
+        ? theme.highlight
+        : props.entry.kind === "previous"
+          ? theme.faint
+          : theme.dim;
+
+  const rail = () =>
+    props.entry.kind === "current"
+      ? "▌"
+      : props.selected
+        ? "▌"
+        : props.entry.kind === "previous"
+          ? "│"
+          : "│";
+
+  const railColor = () =>
+    props.entry.kind === "current"
+      ? theme.accent
+      : props.selected
+        ? theme.highlight
+        : props.entry.kind === "previous"
+          ? theme.faint
+          : theme.border;
 
   const titleColor = () =>
     props.entry.kind === "current"
@@ -63,6 +111,9 @@ function QueueRow(props: {
         props.onPlay(props.entry.index);
       }}
     >
+      <text fg={railColor()} selectable={false} wrapMode="none" width={1}>
+        {rail()}
+      </text>
       <text fg={markerColor()} selectable={false} wrapMode="none" width={1}>
         {marker()}
       </text>
@@ -71,7 +122,11 @@ function QueueRow(props: {
       </text>
       <text
         fg={titleColor()}
-        attributes={props.entry.kind === "current" ? TextAttributes.BOLD : undefined}
+        attributes={
+          props.entry.kind === "current" || props.selected
+            ? TextAttributes.BOLD
+            : undefined
+        }
         selectable={false}
         wrapMode="none"
         truncate
@@ -122,40 +177,46 @@ export function QueuePanel(props: {
       minHeight={props.tiny ? 3 : props.compact ? 4 : 6}
       padding={0}
       gap={props.tiny ? 0 : 1}
-      borderColor={theme.border}
     >
       <Show when={!props.tiny} fallback={<box height={0} />}>
         <box
-        flexDirection="row"
-        alignItems="center"
-        justifyContent="space-between"
-        paddingLeft={1}
-        paddingRight={1}
-        height={1}
-        flexShrink={0}
-      >
-        <text selectable={false} wrapMode="none">
-          <Tint color={theme.muted}>{pluralize(props.entries.length, "track")}</Tint>
-          <Show when={!props.compact} fallback={<Tint color={theme.faint}> </Tint>}>
-            <Tint color={theme.faint}> · </Tint>
-            <Tint color={theme.dim}>{counts().previous} played</Tint>
-            <Tint color={theme.faint}> · </Tint>
-            <Tint color={theme.dim}>{counts().pending} up next</Tint>
-          </Show>
-        </text>
-        <box flexDirection="row" gap={1} flexShrink={0}>
-          <ActionButton
-            label={props.compact ? "SHUF" : "SHUFFLE"}
-            onPress={props.onShuffle}
-            tone="highlight"
-          />
-          <ActionButton
-            label={props.compact ? "CLR" : "CLEAR"}
-            onPress={props.onClear}
-            tone="danger"
-          />
+          flexDirection="row"
+          alignItems="center"
+          justifyContent="space-between"
+          paddingLeft={1}
+          paddingRight={1}
+          height={1}
+          flexShrink={0}
+        >
+          <box flexDirection="row" alignItems="center" gap={1} minWidth={0}>
+            <text
+              fg={theme.textSoft}
+              attributes={TextAttributes.BOLD}
+              selectable={false}
+              wrapMode="none"
+            >
+              {pluralize(props.entries.length, "track").toUpperCase()}
+            </text>
+            <Show when={!props.compact} fallback={<box height={0} />}>
+              <Chip label={`${counts().previous} PLAYED`} tone="muted" />
+              <Chip label={`${counts().pending} UP NEXT`} tone="highlight" />
+            </Show>
+          </box>
+          <box flexDirection="row" gap={1} flexShrink={0}>
+            <ActionButton
+              label={props.compact ? "SHUF" : "SHUFFLE"}
+              onPress={props.onShuffle}
+              tone="highlight"
+              variant="ghost"
+            />
+            <ActionButton
+              label={props.compact ? "CLR" : "CLEAR"}
+              onPress={props.onClear}
+              tone="danger"
+              variant="ghost"
+            />
+          </box>
         </box>
-      </box>
       </Show>
 
       <Show
@@ -170,13 +231,18 @@ export function QueuePanel(props: {
             onMouseDown={() => props.onFocusInput()}
           >
             <text fg={theme.dim} selectable={false}>
-              The queue is empty.
+              ♫  The queue is empty.
             </text>
             <Show when={!props.compact} fallback={<box height={0} />}>
               <text fg={theme.faint} selectable={false}>
                 Press / and paste a YouTube URL or playlist.
               </text>
-              <SectionLabel>ADD SOMETHING WORTH HEARING</SectionLabel>
+              <text selectable={false} wrapMode="none">
+                <Tint color={theme.accent} bold>
+                  add {"<url or search>"}
+                </Tint>
+                <Tint color={theme.faint}> starts the first track</Tint>
+              </text>
             </Show>
           </box>
         }
@@ -191,13 +257,45 @@ export function QueuePanel(props: {
           focusable={false}
           paddingRight={1}
         >
-          <For each={props.entries}>
-            {(entry) => (
-              <QueueRow
-                entry={entry}
-                selected={entry.index === props.selectedIndex}
-                onPlay={props.onPlay}
-              />
+          <For each={sectionsOf(props.entries)}>
+            {(section) => (
+              <>
+                <Show when={!props.compact && !props.tiny} fallback={<box height={0} />}>
+                  <box
+                    height={1}
+                    flexShrink={0}
+                    flexDirection="row"
+                    alignItems="center"
+                    gap={1}
+                    paddingLeft={2}
+                    paddingRight={1}
+                  >
+                    <text
+                      fg={sectionColor(section.kind)}
+                      attributes={TextAttributes.BOLD}
+                      selectable={false}
+                      wrapMode="none"
+                    >
+                      {section.label}
+                    </text>
+                    <box
+                      flexGrow={1}
+                      height={1}
+                      border={["bottom"]}
+                      borderColor={theme.border}
+                    />
+                  </box>
+                </Show>
+                <For each={section.entries}>
+                  {(entry) => (
+                    <QueueRow
+                      entry={entry}
+                      selected={entry.index === props.selectedIndex}
+                      onPlay={props.onPlay}
+                    />
+                  )}
+                </For>
+              </>
             )}
           </For>
         </scrollbox>
@@ -210,7 +308,11 @@ export function QueuePanel(props: {
               ↵
             </Tint>
             <Tint color={theme.dim}> play selection</Tint>
-            <Tint color={theme.faint}> ↑↓ move · click a row to play</Tint>
+            <Tint color={theme.faint}>  ·  </Tint>
+            <Tint color={theme.muted}>↑↓</Tint>
+            <Tint color={theme.faint}> move  ·  </Tint>
+            <Tint color={theme.muted}>space</Tint>
+            <Tint color={theme.faint}> pause  ·  click a row to play</Tint>
           </text>
         </box>
       </Show>

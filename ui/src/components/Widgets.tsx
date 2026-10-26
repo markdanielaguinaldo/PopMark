@@ -11,19 +11,31 @@ export function Panel(
     children?: JSX.Element;
   },
 ) {
-  const { title, subtitle, children, ...box } = props;
+  // Color, title, and spacing props stay on `props` so they remain reactive.
+  // Destructuring or spreading them here would snapshot the first theme.
+  const {
+    title: _title,
+    subtitle,
+    children,
+    borderColor: _borderColor,
+    backgroundColor: _backgroundColor,
+    titleColor: _titleColor,
+    padding: _padding,
+    gap: _gap,
+    ...box
+  } = props;
 
   return (
     <box
       flexDirection="column"
-      backgroundColor={theme.surface}
+      backgroundColor={props.backgroundColor ?? theme.surface}
       border
       borderStyle="rounded"
-      borderColor={theme.border}
-      title={title ? ` ${title} ` : undefined}
-      titleColor={theme.muted}
-      padding={1}
-      gap={0}
+      borderColor={props.borderColor ?? theme.border}
+      title={props.title ? ` ${props.title} ` : undefined}
+      titleColor={props.titleColor ?? theme.muted}
+      padding={props.padding ?? 1}
+      gap={props.gap ?? 0}
       {...box}
     >
       <Show when={subtitle} fallback={<box height={0} />}>
@@ -38,8 +50,9 @@ export function Panel(
 
 export function ActionButton(props: {
   label: string;
+  hint?: string;
   onPress: () => void;
-  tone?: "accent" | "muted" | "danger" | "highlight";
+  tone?: "accent" | "muted" | "danger" | "highlight" | "info";
   active?: boolean;
   disabled?: boolean;
   grow?: number;
@@ -61,6 +74,7 @@ export function ActionButton(props: {
     if (tone() === "accent") return theme.accent;
     if (tone() === "highlight") return theme.highlight;
     if (tone() === "danger") return theme.danger;
+    if (tone() === "info") return theme.info;
     return theme.textSoft;
   };
 
@@ -74,6 +88,8 @@ export function ActionButton(props: {
       alignItems="center"
       justifyContent="center"
       backgroundColor={background()}
+      flexDirection="row"
+      gap={1}
       onMouseOver={() => setHovered(true)}
       onMouseOut={() => setHovered(false)}
       onMouseDown={(event) => {
@@ -83,6 +99,95 @@ export function ActionButton(props: {
     >
       <text fg={foreground()} selectable={false} wrapMode="none" truncate>
         {props.label}
+      </text>
+      <Show when={props.hint} fallback={<box height={0} />}>
+        <box flexGrow={1} />
+        <text
+          fg={props.active ? theme.accentInk : theme.faint}
+          attributes={TextAttributes.DIM}
+          selectable={false}
+          wrapMode="none"
+        >
+          {props.hint}
+        </text>
+      </Show>
+    </box>
+  );
+}
+
+/** Compact metadata label used in panel headers and status rows. */
+export function Chip(props: {
+  label: string;
+  tone?: "accent" | "muted" | "danger" | "highlight" | "info";
+  filled?: boolean;
+}) {
+  const color = () => {
+    switch (props.tone) {
+      case "accent":
+        return theme.accent;
+      case "danger":
+        return theme.danger;
+      case "highlight":
+        return theme.highlight;
+      case "info":
+        return theme.info;
+      default:
+        return theme.muted;
+    }
+  };
+
+  return (
+    <box
+      height={1}
+      flexShrink={0}
+      paddingLeft={1}
+      paddingRight={1}
+      backgroundColor={props.filled ? color() : theme.surfaceRaised}
+    >
+      <text
+        fg={props.filled ? theme.accentInk : color()}
+        attributes={TextAttributes.BOLD}
+        selectable={false}
+        wrapMode="none"
+      >
+        {props.label}
+      </text>
+    </box>
+  );
+}
+
+/** A keyboard key rendered as a small physical keycap. */
+export function Keycap(props: {
+  children: JSX.Element;
+  tone?: "accent" | "muted" | "danger" | "highlight" | "info";
+  width?: number;
+}) {
+  const color = () => {
+    switch (props.tone) {
+      case "muted":
+        return theme.muted;
+      case "danger":
+        return theme.danger;
+      case "highlight":
+        return theme.highlight;
+      case "info":
+        return theme.info;
+      default:
+        return theme.accent;
+    }
+  };
+
+  return (
+    <box
+      height={1}
+      width={props.width}
+      flexShrink={0}
+      paddingLeft={1}
+      paddingRight={1}
+      backgroundColor={theme.surfaceRaised}
+    >
+      <text fg={color()} selectable={false} wrapMode="none">
+        {props.children}
       </text>
     </box>
   );

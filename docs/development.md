@@ -248,10 +248,12 @@ help dialog for the current map.
 
 `theme.ts` exposes a Solid mutable store. Every component reads `theme.accent` or
 another palette key inside JSX, so `applyTheme` retints the whole interface without
-remounting it. `cycleTheme` wraps through five palettes: Midnight, Ember, Sakura,
-Evergreen, and Mono. F5 cycles forward, Shift+F5 backward, and the toast names the new
-theme. The selection is saved to `%LOCALAPPDATA%\PopMark\theme.json`; `POPMARK_THEME`
-overrides the startup choice without rewriting the file.
+remounting it. `cycleTheme` wraps through eight palettes: Midnight, Ember, Sakura,
+Evergreen, Mono, Ruby, Cascade, and Random. Random resolves to a fresh palette from the
+other seven each time it is selected or restored. F5 cycles forward, Shift+F5 backward,
+and the toast names the new theme. The selection is saved to
+`%LOCALAPPDATA%\PopMark\theme.json`; `POPMARK_THEME` overrides the startup choice without
+rewriting the file.
 
 All C# child processes used for tools, mpv, yt-dlp, `where.exe`, and session discovery
 set `UseShellExecute=false`, redirect stdout/stderr, and generally `CreateNoWindow`.

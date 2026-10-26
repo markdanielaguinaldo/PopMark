@@ -3,7 +3,7 @@ import { Show, createSignal, onCleanup } from "solid-js";
 import type { Track } from "../bridge/protocol";
 import { formatTime, singleLine } from "../lib/format";
 import { positionRatio, safeDuration } from "../lib/playback";
-import { brandGradient, theme, themeInfo } from "../theme";
+import { brandGradient, theme, themeLabel } from "../theme";
 import { Equalizer, SliderBar, Tint } from "./Widgets";
 
 const WAVE = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"];
@@ -173,7 +173,7 @@ export function Splash(props: {
         <Tint color={theme.faint}> · </Tint>
         <Tint color={theme.dim}>v{props.status}</Tint>
         <Tint color={theme.faint}> · </Tint>
-        <Tint color={theme.muted}>{themeInfo().name}</Tint>
+        <Tint color={theme.muted}>{themeLabel()}</Tint>
       </text>
     </box>
   );

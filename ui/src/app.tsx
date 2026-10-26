@@ -42,7 +42,7 @@ import {
   rememberCommand,
   type HistoryState,
 } from "./lib/playlist";
-import { theme, cycleTheme } from "./theme";
+import { theme, cycleTheme, themeLabel } from "./theme";
 
 type Dialog = "help" | "tools" | "logs" | null;
 type InputMode = "command" | "navigation" | "focus" | "modal";
@@ -344,7 +344,7 @@ export function App(props: {
 
   function changeTheme(direction: 1 | -1) {
     const next = cycleTheme(direction);
-    setThemeToast(`${next.name} · ${next.description}`);
+    setThemeToast(`${themeLabel()} · ${next.description}`);
     if (themeToastTimer) clearTimeout(themeToastTimer);
     themeToastTimer = setTimeout(() => setThemeToast(undefined), 2200);
   }
@@ -858,7 +858,7 @@ export function App(props: {
               message={store.playback.message}
               busy={store.playback.busy}
               busyLabel={store.playback.busyLabel}
-              columns={dimensions().width - (narrow() ? 4 : 34)}
+              columns={dimensions().width - (narrow() ? 6 : 39)}
               onToggle={togglePlayback}
               onNext={nextTrack}
               onPrevious={previousTrack}
@@ -883,6 +883,7 @@ export function App(props: {
           <Show when={!narrow()} fallback={<box height={0} />}>
             <Sidebar
               tools={store.tools}
+              compact={short()}
               onManageTools={openTools}
               onHelp={openHelp}
               onSplash={openFocus}

@@ -255,10 +255,10 @@ and the toast names the new theme. The selection is saved to
 `%LOCALAPPDATA%\PopMark\theme.json`; `POPMARK_THEME` overrides the startup choice without
 rewriting the file.
 
-`Starfield.tsx` draws a deterministic, sparse set of stars behind Focus View. Each
-star has its own phase and speed, so the shimmer never marches in lockstep. Density is
-reduced in the central reading area and uses the active theme's faint/dim/muted colors;
-the brightest glyphs are rare. It updates every 420 ms and never intercepts input.
+`Starfield.tsx` draws a minimal, deterministic set of stars behind Focus View in three
+depth layers. Every star stays visible; only its color drifts along a slow independent
+sine wave, so nothing blinks in or out. The central reading area is dimmer. It updates
+every 150 ms and never intercepts input.
 
 All C# child processes used for tools, mpv, yt-dlp, `where.exe`, and session discovery
 set `UseShellExecute=false`, redirect stdout/stderr, and generally `CreateNoWindow`.

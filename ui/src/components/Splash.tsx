@@ -5,6 +5,7 @@ import { formatTime, singleLine } from "../lib/format";
 import { positionRatio, safeDuration } from "../lib/playback";
 import { brandGradient, theme, themeLabel } from "../theme";
 import { Equalizer, SliderBar, Tint } from "./Widgets";
+import { Starfield } from "./Starfield";
 
 const WAVE = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"];
 
@@ -18,6 +19,7 @@ export function Splash(props: {
   toolsReady: number;
   toolsTotal: number;
   width: number;
+  height: number;
   onSeek: (ratio: number, final?: boolean) => void;
 }) {
   const [tick, setTick] = createSignal(0);
@@ -56,6 +58,8 @@ export function Splash(props: {
       justifyContent="center"
       gap={1}
     >
+      <Starfield width={props.width} height={props.height} />
+
       <ascii_font text="POPMARK" font={font()} color={[...brandGradient()]} selectable={false} />
 
       <text selectable={false} wrapMode="none">

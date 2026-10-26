@@ -487,6 +487,7 @@ test("renders help and tools dialogs and the focus view", async () => {
         toolsReady={2}
         toolsTotal={2}
         width={110}
+        height={36}
         onSeek={(ratio, final) => focusSeeks.push({ ratio, final: final ?? true })}
       />
     ),
@@ -499,6 +500,7 @@ test("renders help and tools dialogs and the focus view", async () => {
     expect(frame).toContain("A TERMINAL JUKEBOX");
     expect(frame).toContain("Focus Track");
     expect(frame).toContain("tools 2/2");
+    expect(splash.renderer.root.findDescendantById("focus-stars")).toBeDefined();
 
     const leftEq = splash.renderer.root.findDescendantById("focus-eq-left");
     const rightEq = splash.renderer.root.findDescendantById("focus-eq-right");

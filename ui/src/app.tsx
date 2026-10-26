@@ -914,6 +914,7 @@ export function App(props: {
           toolsReady={toolsReady()}
           toolsTotal={store.tools.length}
           width={dimensions().width}
+          height={dimensions().height}
           onSeek={seekToRatio}
         />
       </Show>

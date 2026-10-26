@@ -41,7 +41,7 @@ Click a row to play it; drag the progress bar or volume slider.
 
 Press <kbd>F3</kbd> for the large now-playing view. It is a playback surface, not a
 second command input: printable keys are ignored, while playback and navigation
-shortcuts still work.
+shortcuts still work. A sparse, dim starfield shimmers behind the content.
 
 ## Quick Start
 
@@ -136,7 +136,7 @@ dotnet run --project .\PopMark\PopMark.csproj -- --legacy-ui
   library.
 - **Queue restore** — current track, upcoming tracks, and volume return on the next
   launch.
-- **Focus View** - a large now-playing screen with a waveform, progress, and track info.
+- **Focus View** - a large now-playing screen with a dim twinkling starfield, waveform, progress, and track info.
 - **Themes** - <kbd>F5</kbd> cycles eight color schemes; <kbd>Shift</kbd>+<kbd>F5</kbd>
   goes back. The choice is remembered for the next launch; the **Random** scheme picks
   a fresh palette each time it is selected.
@@ -182,7 +182,8 @@ Only <kbd>Ctrl</kbd>+<kbd>Q</kbd> quits. Plain <kbd>q</kbd> is not a quit key.
 Focus View supports the same playback and navigation shortcuts, including
 <kbd>Space</kbd>, <kbd>n</kbd>/<kbd>p</kbd>, arrow keys, <kbd>s</kbd>, <kbd>F1</kbd>,
 <kbd>F2</kbd>, <kbd>F4</kbd>, <kbd>F5</kbd>, and <kbd>Esc</kbd>/<kbd>F3</kbd> to
-return. Drag its progress bar to seek.
+return. Drag its progress bar to seek. The dim starfield behind it twinkles at the
+edges and stays quieter behind the reading area.
 
 ## Commands
 

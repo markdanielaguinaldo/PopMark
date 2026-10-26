@@ -30,7 +30,7 @@ PopMark.exe "https://www.youtube.com/watch?v=..."
 | View / mode | What it does |
 | --- | --- |
 | **Command Center** | Now playing, transport, volume, queue, tools, and shortcuts. |
-| **Focus View** | Large logo, waveform, current track, progress, and playback controls. |
+| **Focus View** | Large logo, dim twinkling starfield, waveform, current track, progress, and playback controls. |
 | **Command** | The bottom input owns printable text, Enter, history, and shortcuts. |
 | **Navigation** | The input blurs; printable keys are ignored and navigation keys work. |
 | **Modal** | Help, tools, and diagnostics own the keyboard until closed. |
@@ -39,7 +39,8 @@ PopMark.exe "https://www.youtube.com/watch?v=..."
 <kbd>Esc</kbd> returns one level. Only <kbd>Ctrl</kbd>+<kbd>Q</kbd> quits.
 
 Focus View is not a command input: typing ordinary characters there does nothing. It
-supports playback and navigation shortcuts, and its progress bar is draggable.
+supports playback and navigation shortcuts, and its progress bar is draggable. A sparse
+starfield shimmers behind the content, with denser light toward the edges of the screen.
 
 ## Themes
 

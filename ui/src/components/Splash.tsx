@@ -101,7 +101,7 @@ export function Splash(props: {
               >
                 {current.title}
               </text>
-              <Equalizer active={playing} bars={5} />
+              <Equalizer active={playing} bars={5} phase={1.6} reverse />
             </box>
             <text selectable={false} wrapMode="none">
               <Tint color={theme.muted}>{current.displaySource}</Tint>

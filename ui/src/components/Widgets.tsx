@@ -240,7 +240,13 @@ export function Spinner(props: { active: Accessor<boolean>; label?: string }) {
 
 const BARS = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"];
 
-export function Equalizer(props: { active: Accessor<boolean>; bars?: number; color?: string }) {
+export function Equalizer(props: {
+  active: Accessor<boolean>;
+  bars?: number;
+  color?: string;
+  phase?: number;
+  reverse?: boolean;
+}) {
   const count = props.bars ?? 7;
   const [tick, setTick] = createSignal(0);
 
@@ -253,7 +259,8 @@ export function Equalizer(props: { active: Accessor<boolean>; bars?: number; col
   const glyphs = () => {
     const now = tick();
     return Array.from({ length: count }, (_, index) => {
-      const phase = now * 0.55 + index * 0.9;
+      const position = props.reverse ? count - 1 - index : index;
+      const phase = now * 0.55 + position * 0.9 + (props.phase ?? 0);
       const level = props.active() ? (Math.sin(phase) + 1) / 2 : 0.12;
       return BARS[Math.min(BARS.length - 1, Math.max(0, Math.round(level * (BARS.length - 1))))];
     }).join("");

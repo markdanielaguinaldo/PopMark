@@ -56,13 +56,13 @@ export function NowPlaying(props: {
     const total = duration();
     return total === undefined ? undefined : Math.max(0, total - props.elapsed);
   };
-  const wide = () => !props.compact && props.columns >= 110;
   const statusTone = () => {
     if (props.status === "Playing") return "accent" as const;
     if (props.status === "Paused") return "highlight" as const;
     if (props.status === "Loading") return "info" as const;
     return "muted" as const;
   };
+  const volumeBarWidth = () => Math.max(8, Math.min(24, props.columns - 66));
 
   return (
     <Panel
@@ -70,7 +70,7 @@ export function NowPlaying(props: {
       flexGrow={0}
       flexBasis="auto"
       flexShrink={0}
-      minHeight={props.tiny ? 6 : props.compact ? 8 : 10}
+      minHeight={props.tiny ? 5 : props.compact ? 7 : 9}
       gap={0}
     >
       <box flexDirection="row" alignItems="flex-start" gap={1} flexShrink={0}>
@@ -169,80 +169,72 @@ export function NowPlaying(props: {
       </Show>
 
       <box
+        id="transport-row"
         flexDirection="row"
         gap={1}
         height={1}
         flexShrink={0}
-        justifyContent="space-between"
         alignItems="center"
       >
-        <ActionButton
-          label="◀ PREV"
-          hint={wide() ? "ctrl+b" : undefined}
-          onPress={props.onPrevious}
-          grow={1}
-          tone="accent"
-          variant="ghost"
-        />
-        <ActionButton
-          label={playing() ? "❚❚ PAUSE" : "▶ PLAY"}
-          hint={wide() ? "space" : undefined}
-          onPress={props.onToggle}
-          grow={2}
-          active
-        />
-        <ActionButton
-          label="NEXT ▶"
-          hint={wide() ? "ctrl+n" : undefined}
-          onPress={props.onNext}
-          grow={1}
-          tone="accent"
-          variant="ghost"
-        />
-        <ActionButton
-          label="■ STOP"
-          onPress={props.onStop}
-          grow={1}
-          tone="danger"
-          variant="ghost"
-        />
-        <Show when={!props.compact} fallback={<box height={0} />}>
+        <box flexDirection="row" gap={1} alignItems="center" flexShrink={0}>
           <ActionButton
-            label="SHUFFLE"
-            hint={wide() ? "ctrl+s" : undefined}
+            label="◀ PREV"
+            onPress={props.onPrevious}
+            tone="accent"
+            variant="ghost"
+          />
+          <ActionButton
+            label={playing() ? "❚❚ PAUSE" : "▶ PLAY"}
+            onPress={props.onToggle}
+            active
+          />
+          <ActionButton
+            label="NEXT ▶"
+            onPress={props.onNext}
+            tone="accent"
+            variant="ghost"
+          />
+          <ActionButton
+            label="■ STOP"
+            onPress={props.onStop}
+            tone="danger"
+            variant="ghost"
+          />
+          <ActionButton
+            label="⇄ SHUFFLE"
             onPress={props.onShuffle}
-            grow={1}
             tone="highlight"
             variant="ghost"
           />
+        </box>
+
+        <box flexGrow={1} />
+
+        <Show when={!props.compact} fallback={<box height={0} />}>
+          <box flexDirection="row" gap={1} alignItems="center" height={1} flexShrink={0}>
+            <text fg={theme.dim} selectable={false} wrapMode="none" width={3}>
+              VOL
+            </text>
+            <SliderBar
+              id="volume-bar"
+              width={volumeBarWidth()}
+              ratio={props.volume / MAX_VOLUME}
+              onSelect={(ratio, final) =>
+                props.onVolume(Math.round(ratio * MAX_VOLUME), final)
+              }
+              filledColor={theme.highlight}
+              trackColor={theme.surfaceHover}
+              thumbColor={theme.highlight}
+            />
+            <text fg={theme.highlight} selectable={false} wrapMode="none" width={5} textAlign="right">
+              {`${props.volume}%`}
+            </text>
+          </box>
         </Show>
       </box>
 
-      <Show when={!props.compact} fallback={<box height={0} />}>
-        <box flexDirection="row" gap={1} alignItems="center" height={1} flexShrink={0}>
-          <text fg={theme.dim} selectable={false} wrapMode="none" width={4}>
-            VOL
-          </text>
-          <SliderBar
-            id="volume-bar"
-            width={Math.max(10, props.columns - 14)}
-            ratio={props.volume / MAX_VOLUME}
-            onSelect={(ratio, final) =>
-              props.onVolume(Math.round(ratio * MAX_VOLUME), final)
-            }
-            filledColor={theme.highlight}
-            trackColor={theme.surfaceHover}
-            thumbColor={theme.highlight}
-          />
-          <text fg={theme.highlight} selectable={false} wrapMode="none" width={5} textAlign="right">
-            {`${props.volume}%`}
-          </text>
-        </box>
-      </Show>
-
       <Show when={props.compact && !props.tiny} fallback={<box height={0} />}>
         <box flexDirection="row" gap={1} alignItems="center" height={1} flexShrink={0} minWidth={0}>
-          <ActionButton label="SHUFFLE" onPress={props.onShuffle} tone="highlight" />
           <text
             fg={messageColor(message(), props.busy)}
             attributes={TextAttributes.DIM}

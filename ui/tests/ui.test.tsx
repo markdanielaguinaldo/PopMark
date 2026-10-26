@@ -167,6 +167,9 @@ test("renders the queue and sends transport shortcuts", async () => {
 
     const volumeBar = setup.renderer.root.findDescendantById("volume-bar");
     expect(volumeBar).toBeDefined();
+    const transportRow = setup.renderer.root.findDescendantById("transport-row");
+    expect(transportRow).toBeDefined();
+    expect(transportRow!.y).toBe(volumeBar!.y);
     await setup.mockMouse.click(
       volumeBar!.x + Math.floor(volumeBar!.width / 2),
       volumeBar!.y,

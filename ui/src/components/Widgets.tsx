@@ -244,8 +244,7 @@ export function Equalizer(props: {
   active: Accessor<boolean>;
   bars?: number;
   color?: string;
-  phase?: number;
-  reverse?: boolean;
+  id?: string;
 }) {
   const count = props.bars ?? 7;
   const [tick, setTick] = createSignal(0);
@@ -257,17 +256,19 @@ export function Equalizer(props: {
   onCleanup(() => clearInterval(timer));
 
   const glyphs = () => {
-    const now = tick();
+    tick();
+    // Drive the phase from the wall clock so every equalizer on screen uses the
+    // same step, even when mounted in separate components.
+    const step = Math.floor(Date.now() / 190);
     return Array.from({ length: count }, (_, index) => {
-      const position = props.reverse ? count - 1 - index : index;
-      const phase = now * 0.55 + position * 0.9 + (props.phase ?? 0);
+      const phase = step * 0.55 + index * 0.9;
       const level = props.active() ? (Math.sin(phase) + 1) / 2 : 0.12;
       return BARS[Math.min(BARS.length - 1, Math.max(0, Math.round(level * (BARS.length - 1))))];
     }).join("");
   };
 
   return (
-    <text fg={props.color ?? theme.accent} selectable={false} wrapMode="none">
+    <text id={props.id} fg={props.color ?? theme.accent} selectable={false} wrapMode="none">
       {glyphs()}
     </text>
   );

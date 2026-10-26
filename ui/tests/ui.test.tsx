@@ -499,6 +499,15 @@ test("renders help and tools dialogs and the focus view", async () => {
     expect(frame).toContain("Focus Track");
     expect(frame).toContain("tools 2/2");
 
+    const leftEq = splash.renderer.root.findDescendantById("focus-eq-left");
+    const rightEq = splash.renderer.root.findDescendantById("focus-eq-right");
+    expect(leftEq).toBeDefined();
+    expect(rightEq).toBeDefined();
+    const leftGlyphs = (leftEq as unknown as { plainText?: string }).plainText ?? "";
+    const rightGlyphs = (rightEq as unknown as { plainText?: string }).plainText ?? "";
+    expect(leftGlyphs).not.toBe("");
+    expect(rightGlyphs).toBe(leftGlyphs);
+
     const focusProgress = splash.renderer.root.findDescendantById("focus-progress");
     expect(focusProgress).toBeDefined();
     await splash.mockMouse.drag(

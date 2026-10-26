@@ -91,7 +91,7 @@ export function Splash(props: {
         {(current: Track) => (
           <box flexDirection="column" alignItems="center" gap={1} width="70%" minWidth={40}>
             <box flexDirection="row" gap={1} alignItems="center">
-              <Equalizer active={playing} bars={5} />
+              <Equalizer active={playing} bars={5} id="focus-eq-left" />
               <text
                 fg={theme.text}
                 attributes={TextAttributes.BOLD}
@@ -101,7 +101,7 @@ export function Splash(props: {
               >
                 {current.title}
               </text>
-              <Equalizer active={playing} bars={5} phase={1.6} reverse />
+              <Equalizer active={playing} bars={5} id="focus-eq-right" />
             </box>
             <text selectable={false} wrapMode="none">
               <Tint color={theme.muted}>{current.displaySource}</Tint>

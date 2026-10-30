@@ -25,8 +25,7 @@ case "$(uname -m)" in
 esac
 
 DISTRO="debian"
-ROOTFS="$PREFIX/var/lib/proot-distro/installed-rootfs/$DISTRO"
-INSTALL_DIR="$ROOTFS/opt/popmark"
+PROOT_BASE="$PREFIX/var/lib/proot-distro"
 TARBALL="${1:-}"
 
 # Let the caller write ~/storage/... instead of the full expanded path.
@@ -81,12 +80,38 @@ say "Installing Termux packages (proot-distro, audio, wake lock)..."
 pkg update -y >/dev/null
 pkg install -y proot-distro pulseaudio tar termux-tools >/dev/null
 
-if [ ! -d "$ROOTFS" ]; then
+# proot-distro 5.x stores containers under containers/<name>/rootfs; older
+# releases used installed-rootfs/<name>. Resolve whichever actually holds a
+# rootfs, and never treat a folder this script created as an installed distro.
+resolve_rootfs() {
+    for candidate in "$PROOT_BASE/containers/$DISTRO/rootfs" "$PROOT_BASE/installed-rootfs/$DISTRO"; do
+        if [ -d "$candidate/etc" ]; then
+            ROOTFS="$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
+if ! resolve_rootfs; then
     say "Creating the Debian proot distro (this downloads about 100 MB)..."
     proot-distro install "$DISTRO"
+    resolve_rootfs || die "proot-distro did not create a usable Debian rootfs. Run 'proot-distro install debian' and retry."
 else
     say "Debian proot distro already exists."
 fi
+say "Rootfs: $ROOTFS"
+
+# Earlier versions of this installer wrote into the legacy path and created that
+# folder themselves. Remove the leftover copy so it cannot be mistaken for an
+# install or waste ~800 MB.
+STRAY="$PROOT_BASE/installed-rootfs/$DISTRO"
+if [ "$ROOTFS" != "$STRAY" ] && [ -d "$STRAY" ] && [ ! -d "$STRAY/etc" ]; then
+    say "Removing a stray legacy install at $STRAY"
+    rm -rf "$STRAY"
+fi
+
+INSTALL_DIR="$ROOTFS/opt/popmark"
 
 say "Installing mpv inside Debian..."
 proot-distro login "$DISTRO" -- bash -lc '

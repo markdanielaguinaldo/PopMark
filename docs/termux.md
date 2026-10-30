@@ -220,6 +220,7 @@ Deleting the distro removes the queue and settings too.
 | `Could not find the PopMark backend` | The archive was extracted without its `ui` folder or `PopMark` binary. Rerun the installer with a fresh archive. |
 | `mpv: NOT FOUND` | `proot-distro login debian -- apt-get install -y mpv` |
 | No audio, but the track advances | Check `pactl info`; restart PulseAudio as shown above. |
+| `GC heap initialization failed (0x8007000E)` | Proot cannot satisfy the GC's default virtual reservation. The launcher already sets `DOTNET_GCHeapHardLimit=0x10000000`; if it still fails, raise it (`0x20000000`) or free RAM. |
 | Playback stops when the screen locks | Keep Termux awake, disable battery optimisation, enable the child-process setting above. |
 | `Failed to resolve host` / 403 from YouTube | Update yt-dlp with `tools install yt-dlp`. |
 | Interface looks torn or oversized | Use Termux at a smaller font size, or turn the phone to landscape for the full sidebar. |

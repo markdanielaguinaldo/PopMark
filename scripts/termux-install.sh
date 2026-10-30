@@ -195,6 +195,10 @@ cat > "$ROOTFS/usr/local/bin/popmark" <<'LAUNCHER'
 export PULSE_SERVER="${PULSE_SERVER:-tcp:127.0.0.1:4713}"
 export POPMARK_MPV_AO="${POPMARK_MPV_AO:-pulse}"
 export POPMARK_HOME="${POPMARK_HOME:-$HOME/.local/share/PopMark}"
+# Under proot the GC cannot reserve its default virtual range and CoreCLR aborts
+# with "GC heap initialization failed (0x8007000E)". A hard limit avoids the
+# reservation; 256 MB is far more than this app needs.
+export DOTNET_GCHeapHardLimit="${DOTNET_GCHeapHardLimit:-0x10000000}"
 cd /opt/popmark
 exec /opt/popmark/PopMark "$@"
 LAUNCHER
@@ -226,7 +230,8 @@ proot-distro login debian -- /bin/sh -c '
     PULSE_SERVER="${PULSE_SERVER:-tcp:127.0.0.1:4713}"
     POPMARK_MPV_AO="${POPMARK_MPV_AO:-pulse}"
     POPMARK_HOME="${POPMARK_HOME:-$HOME/.local/share/PopMark}"
-    export PULSE_SERVER POPMARK_MPV_AO POPMARK_HOME
+    DOTNET_GCHeapHardLimit="${DOTNET_GCHeapHardLimit:-0x10000000}"
+    export PULSE_SERVER POPMARK_MPV_AO POPMARK_HOME DOTNET_GCHeapHardLimit
     cd /opt/popmark || exit 1
     exec ./PopMark "$@"
 ' sh "$@"

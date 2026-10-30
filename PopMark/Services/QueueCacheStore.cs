@@ -1,3 +1,4 @@
+using PopMark.Helpers;
 using PopMark.Models;
 using System.Text.Json;
 
@@ -10,12 +11,9 @@ public static class QueueCacheStore
         WriteIndented = true
     };
 
-    private static string StateDirectory =>
-        Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "PopMark");
+    private static string StateDirectory => PopMarkState.Root;
 
-    private static string CacheFilePath => Path.Combine(StateDirectory, "queue.json");
+    private static string CacheFilePath => PopMarkState.QueueFile;
 
     public static PlayerSnapshot Load()
     {

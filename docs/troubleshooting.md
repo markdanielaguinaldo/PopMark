@@ -11,10 +11,17 @@ mpv: C:\Program Files\mpv\mpv.exe [ok]
 A tool marked `NOT FOUND` or `found but will not run` is the cause of most playback
 problems.
 
+Paths below are written in Windows form. On Linux and on Android under Termux the
+state folder is `$XDG_DATA_HOME/PopMark` (usually `~/.local/share/PopMark`), and
+`POPMARK_HOME` overrides it on every platform. See
+[configuration](configuration.md#state-files) for the full list.
+
 ## Missing or broken tools
 
-Run `tools install` to download both tools into `%LOCALAPPDATA%\PopMark\tools` and pin
-them. This is also the repair path: it does not reuse an existing copy.
+Run `tools install` to download `yt-dlp` into the PopMark state folder and pin it.
+`mpv` is installed with the system package manager (`apt`, `apk`, `dnf`, `pacman`,
+`zypper`, `pkg`, or `brew`) where one is available. This is also the repair path: it
+does not reuse an existing copy.
 
 If the download fails:
 
@@ -74,25 +81,37 @@ Reproduce it outside the UI for the full message:
 PopMark.exe play-test "https://www.youtube.com/watch?v=..." --seconds 10
 ```
 
+```bash
+./PopMark play-test "https://www.youtube.com/watch?v=..." --seconds 10
+```
+
 If that reports a 403 or a signature error, update `yt-dlp`. If it reports that a tool is
 missing, run `tools install`.
 
 ## `mpv could not be started from ...`
 
-The resolved `mpv` path exists but Windows refused to launch it. Common causes:
+The resolved `mpv` path exists but the operating system refused to launch it. Common
+causes:
 
 - A pinned path that has since been moved, deleted, or quarantined. Run `tools clear mpv`,
   then `tools install mpv`.
 - A zero-length WinGet execution alias picked up by a manual pin. Point at the real
   `mpv.exe` instead.
+- On Linux, a binary without execute permission, or a missing shared library. Confirm
+  with `ldd /path/to/mpv`; install `mpv` from the distro packages rather than copying a
+  binary between systems.
 - Antivirus blocking the real binary at launch. Check the quarantined-items list, then
   reinstall.
 
 ## There is no sound
 
-- Check the volume in PopMark with <kbd>=</kbd>, and in the Windows volume mixer.
+- Check the volume in PopMark with <kbd>=</kbd>, and in the system volume mixer.
 - PopMark allows up to 130%; values above 100% are a boost, not a separate output.
 - Confirm another `mpv` or browser tab is not holding an exclusive audio device.
+- On Linux, `mpv` uses whatever audio output it autodetects. If it picks a silent or
+  nonexistent device, set `POPMARK_MPV_AO` (`pulse`, `alsa`, `pipewire`, `null`, ...) to
+  force one. On Android/Termux this is set for you — see
+  [Android / Termux](termux.md#audio).
 - `mpv` runs with video disabled. That is expected, not a broken install.
 
 ## The queue was not restored
@@ -100,18 +119,20 @@ The resolved `mpv` path exists but Windows refused to launch it. Common causes:
 - PopMark restores the queue only when it starts **without** a URL. Passing a URL
   replaces the restore for that launch.
 - `quit` keeps the queue; `stop` and `clear playlist` do not.
-- If `%LOCALAPPDATA%\PopMark\queue.json` is missing or unreadable, PopMark starts with an
+- If `queue.json` in the state folder is missing or unreadable, PopMark starts with an
   empty queue rather than failing. Check that the file exists and contains valid JSON.
 - A restored queue starts stopped. Press <kbd>Space</kbd> to resume.
 
 ## A previous session left `mpv` running
 
 On startup PopMark terminates `mpv` processes recorded in `sessions.json`, then scans for
-any `mpv.exe` carrying a `--input-ipc-server=*popmark-*` argument. If an orphan survives:
+any `mpv` carrying a `--input-ipc-server=*popmark-*` argument (`mpv.exe` processes on
+Windows, `/proc` entries on Linux). If an orphan survives:
 
 1. Close PopMark.
-2. End the stray `mpv.exe` in Task Manager.
-3. Delete `%LOCALAPPDATA%\PopMark\sessions.json`.
+2. End the stray `mpv` process in Task Manager, or with `pkill -f 'popmark-.*mpv'` on
+   Linux.
+3. Delete `sessions.json` from the state folder.
 4. Start PopMark again.
 
 A normal `mpv` you launched yourself is not matched by that scan and is left alone.
@@ -119,8 +140,8 @@ A normal `mpv` you launched yourself is not matched by that scan and is left alo
 ## The screen is garbled or flickers
 
 PopMark draws a full-screen terminal UI with cursor positioning and mouse reporting.
-Use a terminal with ANSI support — Windows Terminal is the safest choice — and avoid
-very small window sizes.
+Use a terminal with ANSI support — Windows Terminal, or Termux/Konsole on Linux — and
+avoid very small window sizes.
 
 - <kbd>Ctrl</kbd>+<kbd>L</kbd> or `cls` redraws the screen.
 - Resizing the window triggers a redraw.
@@ -131,14 +152,16 @@ escape sequences will produce a poor result; use a real console window.
 
 If the OpenTUI process exits unexpectedly, the launcher resets the terminal before
 returning to the shell, so mouse reports should not spill into the prompt. Details are
-written to `%LOCALAPPDATA%\PopMark\logs\opentui.log`; include that file when reporting a
-crash. The queue is saved continuously and will be restored on the next launch.
+written to `opentui.log` in the state folder's `logs` directory; include that file when
+reporting a crash. The queue is saved continuously and will be restored on the next
+launch.
 
 ## Mouse clicks do nothing
 
 Mouse reporting depends on the terminal. Confirm the terminal forwards mouse events, and
 that the app is not running under a multiplexer that swallows them. Keyboard controls
-always work.
+always work. On a phone, tap and drag are delivered as mouse events by Termux; if taps
+are ignored, see the [Termux guide](termux.md).
 
 ## `play-test` exit codes
 
@@ -160,6 +183,13 @@ The default test length is 15 seconds; `--seconds N` accepts 1 to 3600. Add
   `SharpCompress`.
 - CI builds the solution in Release on `windows-latest`; a local
   `dotnet build .\PopMark.sln --configuration Release` should reproduce it.
+- Packaging for Linux or Android uses `scripts/build-linux.ps1` (Windows) or
+  `scripts/build-linux.sh` (Linux). Both need network access to download the Bun
+  runtime, the OpenTUI native library, and `yt-dlp`. They fetch the newest Bun release;
+  pass `-SkipBun` on Windows (or drop your own `bun` beside the package) to pin one.
+- `scripts/termux-install.sh` must keep LF line endings; a CRLF copy fails immediately
+  with `$'\r': command not found`. Use `git config core.autocrlf false` or the
+  repo's `.gitattributes`, and re-clone if an existing checkout is already CRLF.
 
 ## Known limitations
 
@@ -169,4 +199,6 @@ The default test length is 15 seconds; `--seconds N` accepts 1 to 3600. Add
 - Playlists are read with flat metadata, so titles and durations can be incomplete until
   a track starts.
 - There is no per-track retry command. Re-add the URL, or use `play-test` to diagnose it.
+- Released builds are Windows x64. Linux/macOS run from source, and Android uses the
+  cross-built `linux-arm64` archive described in [Android / Termux](termux.md).
 - Released builds are Windows x64 only.

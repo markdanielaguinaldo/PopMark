@@ -1,7 +1,8 @@
 import { createSignal } from "solid-js";
 import { createMutable } from "solid-js/store";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { homedir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 
 /** Every color the OpenTUI frontend reads. */
 export type Theme = {
@@ -224,8 +225,24 @@ function pickRandomPaletteId(exclude?: PaletteId): PaletteId {
 }
 
 function themeStatePath(): string {
-  const root = process.env.LOCALAPPDATA || process.env.APPDATA || process.cwd();
+  // POPMARK_HOME is the shared override used by the C# backend and the Termux
+  // launcher. Otherwise match the backend: %LOCALAPPDATA% on Windows, XDG on Unix.
+  const override = expandHome(process.env.POPMARK_HOME?.trim());
+  if (override) return resolve(override, "theme.json");
+
+  const root =
+    process.platform === "win32"
+      ? process.env.LOCALAPPDATA || process.env.APPDATA || process.cwd()
+      : process.env.XDG_DATA_HOME || join(homedir(), ".local", "share");
+
   return join(root, "PopMark", "theme.json");
+}
+
+/** Mirrors `PopMarkState.ExpandHome` so both halves agree on `~/...` overrides. */
+function expandHome(path: string | undefined): string | undefined {
+  if (!path) return undefined;
+  if (path === "~") return homedir();
+  return path.startsWith("~/") ? join(homedir(), path.slice(2)) : path;
 }
 
 function loadThemeId(): ThemeId {

@@ -1,4 +1,4 @@
-import { existsSync, statSync } from "node:fs";
+import { statSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 export type BackendLaunch = {
@@ -10,15 +10,24 @@ export type BackendLaunch = {
 const here = import.meta.dir;
 const uiRoot = resolve(here, "..", "..");
 const repoRoot = resolve(uiRoot, "..");
+// Published builds run `bun` beside `PopMark`, so its folder is the app root.
+const appRoot = resolve(process.execPath, "..");
 
 function candidates(): string[] {
-  const roots = [repoRoot, process.cwd(), resolve(process.cwd(), "..")];
+  const roots = [
+    repoRoot,
+    appRoot,
+    process.cwd(),
+    resolve(process.cwd(), ".."),
+  ];
   const paths: string[] = [];
 
   for (const root of roots) {
     for (const configuration of ["Release", "Debug"]) {
       paths.push(join(root, "PopMark", "bin", configuration, "net9.0", "PopMark.exe"));
       paths.push(join(root, "PopMark", "bin", configuration, "net9.0", "PopMark.dll"));
+      // `dotnet publish` output, and the framework-dependent Linux apphost.
+      paths.push(join(root, "PopMark"));
     }
 
     paths.push(join(root, "PopMark.exe"));
@@ -32,6 +41,14 @@ function isDotnetHost(path: string): boolean {
   return path.toLowerCase().endsWith(".dll");
 }
 
+function isFile(path: string): boolean {
+  try {
+    return statSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
+
 function dotnetCommand(): string {
   return process.env.DOTNET_HOST_PATH ?? Bun.which("dotnet") ?? "dotnet";
 }
@@ -43,19 +60,19 @@ function dotnetCommand(): string {
 export function resolveBackend(): BackendLaunch {
   const override = process.env.POPMARK_BACKEND?.trim();
 
-  if (override && !existsSync(override)) {
+  if (override && !isFile(override)) {
     throw new Error(`POPMARK_BACKEND does not point to an existing file: ${override}`);
   }
 
   const searchPaths = override ? [override, ...candidates()] : candidates();
-  const existing = searchPaths.filter((path) => existsSync(path));
+  const existing = searchPaths.filter((path) => isFile(path));
 
   if (existing.length === 0) {
     throw new Error(
       [
         "Could not find the PopMark backend.",
         "Build it first: dotnet build PopMark.sln --configuration Release",
-        "Or set POPMARK_BACKEND to the full path of PopMark.exe (or PopMark.dll).",
+        "Or set POPMARK_BACKEND to the full path of the PopMark backend (PopMark, PopMark.exe, or PopMark.dll).",
       ].join("\n"),
     );
   }
@@ -68,7 +85,9 @@ export function resolveBackend(): BackendLaunch {
     paths
       .map((path) => {
         try {
-          return { path, modified: statSync(path).mtimeMs };
+          const stats = statSync(path);
+          if (!stats.isFile()) return null;
+          return { path, modified: stats.mtimeMs };
         } catch {
           return null;
         }

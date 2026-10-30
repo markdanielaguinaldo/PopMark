@@ -39,13 +39,31 @@ working on the protocol. Environment overrides:
 | `POPMARK_UI_ENTRY` | Frontend entry file used by `OpenTuiLauncher` |
 | `POPMARK_BUN` | Bun executable used by `OpenTuiLauncher` |
 | `POPMARK_START_URL` | URL the frontend adds after connecting |
+| `POPMARK_HOME` | State folder for the queue, tools, theme, and logs (see below) |
+| `POPMARK_MPV_AO` | Forces `mpv --ao=...` (`pulse`, `alsa`, `pipewire`, `null`, ...) |
 
 ## Prerequisites
 
 - .NET 9 SDK
 - Bun 1.3.14 or newer
-- `yt-dlp` and `mpv` (PopMark can install both into
-  `%LOCALAPPDATA%\PopMark\tools`)
+- `yt-dlp` and `mpv`. `tools install yt-dlp` downloads `yt-dlp` into the state folder;
+  `tools install mpv` uses the system package manager on Linux (`apt`, `apk`, `dnf`,
+  `pacman`, `zypper`, `pkg`) or `brew`, and is unavailable on Windows where `mpv` is
+  expected to be installed separately.
+
+## State folder
+
+PopMark keeps runtime state outside the repository:
+
+| Platform | Default |
+| --- | --- |
+| Windows | `%LOCALAPPDATA%\PopMark` |
+| Linux, macOS, Android | `$XDG_DATA_HOME/PopMark`, usually `~/.local/share/PopMark` |
+
+`POPMARK_HOME` overrides both and is read by the backend and the frontend, so pointing
+it at a scratch folder is the cleanest way to test queue restore or theme persistence
+without touching your real setup. The C# side lives in `Helpers/PopMarkState.cs`.
+
 
 ## Build and run
 
@@ -67,6 +85,29 @@ bun run build
 bun run start
 ```
 
+The same commands work unchanged in bash on Linux and macOS:
+
+```bash
+dotnet build PopMark.sln --configuration Release
+dotnet test PopMark.sln --configuration Release
+cd ui && bun install && bun run typecheck && bun run test
+```
+
+To produce a redistributable Linux package (bundled Bun, OpenTUI native library, and
+`yt-dlp`):
+
+```powershell
+.\scripts\build-linux.ps1 -Runtime linux-arm64   # from Windows
+```
+
+```bash
+./scripts/build-linux.sh 1.1.2 linux-arm64       # from Linux / proot
+```
+
+`linux-arm64` is the Android/Termux target; see
+[Android / Termux](termux.md) for the device-side steps. The publish enables
+`InvariantGlobalization` so the backend does not need ICU inside a bare proot distro.
+
 `bun run start` runs the source with `--conditions=browser`. This is required so
 `solid-js` resolves to the reactive browser build rather than its server build under
 Bun's default `node` condition. The `test` and `build` scripts do the same.
@@ -77,7 +118,12 @@ The backend is discovered in this order:
 2. The newest `PopMark.dll` under `PopMark/bin/{Release,Debug}/net9.0` (launched with
    `dotnet`, which is more reliable on Windows than apphost `.exe` files)
 3. A `PopMark.exe` in the same build folders, or beside the UI
-4. `PopMark.exe` / `PopMark` in the current directory tree
+4. `PopMark.exe` / `PopMark` in the current directory tree, or the published `PopMark`
+   beside the bundled `bun`
+
+Every candidate is checked with `stat`, so a folder named `PopMark` is never mistaken
+for the backend. On Linux and Android the apphost `PopMark` is used directly; the
+`dotnet` host is only preferred when a `.dll` is available.
 
 If no backend is found, the UI shows the build command instead of failing silently.
 
@@ -251,9 +297,8 @@ another palette key inside JSX, so `applyTheme` retints the whole interface with
 remounting it. `cycleTheme` wraps through eight palettes: Midnight, Ember, Sakura,
 Evergreen, Mono, Ruby, Cascade, and Random. Random resolves to a fresh palette from the
 other seven each time it is selected or restored. F5 cycles forward, Shift+F5 backward,
-and the toast names the new theme. The selection is saved to
-`%LOCALAPPDATA%\PopMark\theme.json`; `POPMARK_THEME` overrides the startup choice without
-rewriting the file.
+and the toast names the new theme. The selection is saved to `theme.json` in the state
+folder; `POPMARK_THEME` overrides the startup choice without rewriting the file.
 
 `Starfield.tsx` draws a minimal, deterministic set of stars behind Focus View in three
 depth layers. Every star stays visible; only its color drifts along a slow independent
@@ -315,6 +360,34 @@ it needs a terminal.
 
 The default launcher requires Bun on the machine. The frontend bundle in `ui/dist`
 can be produced with `bun run build`; it still runs under Bun and still spawns the C#
-bridge. The OpenTUI native package (`@opentui/core-win32-x64` on Windows) and the
-tree-sitter assets are resolved at runtime, so ship `ui/node_modules` with `ui/dist`.
-A future installer can ship both the .NET publish output and a Bun runtime.
+bridge. The OpenTUI native package (`@opentui/core-win32-x64` on Windows,
+`@opentui/core-linux-arm64` on Android) and the tree-sitter assets are resolved at
+runtime, so ship `ui/node_modules` with `ui/dist`.
+
+`scripts/build-linux.ps1` and `scripts/build-linux.sh` assemble a portable Linux
+package:
+
+```text
+PopMark-<version>-OpenTUI-<runtime>-portable/
+├── PopMark                     self-contained backend (single file)
+├── bun                         downloaded runtime
+├── tools/yt-dlp/yt-dlp         downloaded binary
+├── ui/dist/                    compiled frontend
+├── ui/node_modules/@opentui/core-<runtime>/
+├── docs/  README.txt
+```
+
+The package is self-contained because a phone should not need the .NET SDK or Bun.
+`mpv` is deliberately left out: distro packages track codec and security fixes, and
+there is no trustworthy portable ARM64 build. The Termux installer runs
+`apt-get install mpv` inside the proot distro instead.
+
+Interop details for Unix:
+
+- `ToolLocator` checks the executable bit and calls `chmod +x` (through .NET) when a
+  downloaded tool arrives without it.
+- Package-manager installs run non-interactively; `sudo` is used only when the process
+  is not already root (inside proot it always is).
+- Only tools PopMark downloaded itself are written to `tools.json`. System packages
+  stay under the package manager's control.
+- Stale sessions are found through `/proc` instead of `where.exe` + `tasklist`.

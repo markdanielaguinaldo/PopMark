@@ -1,3 +1,4 @@
+using PopMark.Helpers;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -17,23 +18,39 @@ public static class ToolLocator
     private static readonly ConcurrentDictionary<string, bool> RunnablePaths = new(StringComparer.OrdinalIgnoreCase);
     private static readonly object OverrideSync = new();
 
-    public static string ToolRoot =>
-        Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "PopMark",
-            "tools");
+    public static string ToolRoot => PopMarkState.ToolsDirectory;
 
-    public static string OverrideFilePath =>
-        Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "PopMark",
-            "tools.json");
+    public static string OverrideFilePath => PopMarkState.ToolsFile;
 
     /// <summary>The enforced install location PopMark manages itself.</summary>
     public static string ManagedDirectory(string commandName) => Path.Combine(ToolRoot, commandName);
 
     public static string ManagedExecutablePath(string commandName) =>
         Path.Combine(ManagedDirectory(commandName), RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? commandName + ".exe" : commandName);
+
+    /// <summary>
+    /// Downloaded tools must carry the execute bit on Linux and macOS; a file extracted
+    /// from a zip or written by HttpClient does not get it automatically.
+    /// </summary>
+    public static void EnsureExecutable(string executablePath)
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows) || !File.Exists(executablePath))
+            return;
+
+        try
+        {
+            File.SetUnixFileMode(
+                executablePath,
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+                UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
+                UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+        }
+        catch
+        {
+            // A read-only filesystem already answered the question; the runnable check
+            // will report the tool as missing rather than failing the install outright.
+        }
+    }
 
     public static string? ResolveExecutable(string commandName)
     {
@@ -210,7 +227,7 @@ public static class ToolLocator
         }
 
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            return null;
+            return LocateRecursively(commandName);
 
         return LocateWithWhere(commandName) ?? LocateRecursively(commandName);
     }
@@ -316,7 +333,32 @@ public static class ToolLocator
     private static IEnumerable<string> GetFallbackPathDirectories()
     {
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            yield return Path.Combine(ToolRoot, "yt-dlp");
+            yield return Path.Combine(ToolRoot, "mpv");
+
+            var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            if (!string.IsNullOrWhiteSpace(home))
+            {
+                yield return Path.Combine(home, ".local", "bin");
+                yield return Path.Combine(home, "bin");
+                yield return Path.Combine(home, ".bun", "bin");
+            }
+
+            // Termux installs into its own prefix. This matters when PopMark runs from
+            // proot: the distro PATH does not include Termux's binaries, but the user's
+            // tools may only exist there.
+            var termuxPrefix = Environment.GetEnvironmentVariable("PREFIX");
+            if (!string.IsNullOrWhiteSpace(termuxPrefix))
+                yield return Path.Combine(termuxPrefix, "bin");
+
+            yield return "/data/data/com.termux/files/usr/bin";
+            yield return "/usr/local/bin";
+            yield return "/usr/bin";
+            yield return "/bin";
+            yield return "/opt/homebrew/bin";
             yield break;
+        }
 
         var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
@@ -337,13 +379,25 @@ public static class ToolLocator
 
     private static IEnumerable<(string Root, int MaxDepth)> GetRecursiveSearchRoots()
     {
+        yield return (ToolRoot, 4);
+
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            if (!string.IsNullOrWhiteSpace(home))
+                yield return (Path.Combine(home, ".local"), 4);
+
+            yield return ("/opt", 3);
+            yield return ("/usr/local", 3);
+            yield break;
+        }
+
         var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
         var programFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
         var commonAppData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
 
-        yield return (ToolRoot, 4);
         yield return (Path.Combine(localAppData, "Microsoft", "WinGet", "Packages"), 4);
         yield return (Path.Combine(programFiles, "WinGet", "Packages"), 4);
         yield return (Path.Combine(userProfile, "scoop", "apps"), 4);
@@ -423,7 +477,18 @@ public static class ToolLocator
         {
             // Windows app-execution aliases are zero-length reparse stubs that fail to launch.
             var info = new FileInfo(path);
-            return info.Exists && info.Length > 0;
+            if (!info.Exists || info.Length == 0)
+                return false;
+
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                return true;
+
+            // On Unix a file without an execute bit cannot be a tool, even when the
+            // name and size look right.
+            var mode = info.UnixFileMode;
+            return (mode & UnixFileMode.UserExecute) != 0 ||
+                   (mode & UnixFileMode.GroupExecute) != 0 ||
+                   (mode & UnixFileMode.OtherExecute) != 0;
         }
         catch
         {

@@ -2,7 +2,7 @@ import { TextAttributes } from "@opentui/core";
 import type { InputRenderable } from "@opentui/core";
 import { Show, createEffect, createSignal } from "solid-js";
 import { theme } from "../theme";
-import { Tint } from "./Widgets";
+import { ActionButton, Tint } from "./Widgets";
 
 export type InputMode = "command" | "navigation" | "focus" | "modal";
 
@@ -14,6 +14,12 @@ export function Footer(props: {
   onRef: (input: InputRenderable) => void;
   onFocusInput: () => void;
   onEnterNavigation: () => void;
+  onOpenHelp: () => void;
+  onOpenTools: () => void;
+  onOpenFocus: () => void;
+  onOpenLogs: () => void;
+  onCycleTheme: () => void;
+  onQuit: () => void;
 }) {
   let inputRef: InputRenderable | undefined;
   const [inputNode, setInputNode] = createSignal<InputRenderable>();
@@ -131,9 +137,21 @@ export function Footer(props: {
         <Show
           when={!props.narrow}
           fallback={
-            <text fg={theme.faint} selectable={false} wrapMode="none">
-              F1 help · F2 tools · F3 focus · F4 logs · F5 theme
-            </text>
+            // Termux and other touch terminals rarely have F-keys. Every view is
+            // reachable from these one-cell buttons instead.
+            <box flexDirection="row" gap={1} alignItems="center" flexShrink={0}>
+              <ActionButton label="HELP" onPress={props.onOpenHelp} variant="ghost" />
+              <ActionButton label="TOOLS" onPress={props.onOpenTools} variant="ghost" />
+              <ActionButton label="FOCUS" onPress={props.onOpenFocus} variant="ghost" />
+              <ActionButton label="LOGS" onPress={props.onOpenLogs} variant="ghost" />
+              <ActionButton
+                label="THEME"
+                onPress={props.onCycleTheme}
+                tone="highlight"
+                variant="ghost"
+              />
+              <ActionButton label="QUIT" onPress={props.onQuit} tone="danger" variant="ghost" />
+            </box>
           }
         >
           <text selectable={false} wrapMode="none">

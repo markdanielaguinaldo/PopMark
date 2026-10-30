@@ -75,6 +75,14 @@ public sealed class MpvPlayer
         startInfo.ArgumentList.Add($"--volume-max={MaxVolumePercent}");
         startInfo.ArgumentList.Add($"--volume={Math.Clamp(volumePercent, MinVolumePercent, MaxVolumePercent)}");
         startInfo.ArgumentList.Add($"--input-ipc-server={_ipcServerPath}");
+        startInfo.ArgumentList.Add("--audio-client-name=PopMark");
+
+        // Termux and other Android-ish setups need an explicit audio output (for
+        // example pulse over the Termux PulseAudio bridge). Desktop Linux and
+        // Windows keep mpv's automatic choice.
+        var audioOutput = Environment.GetEnvironmentVariable("POPMARK_MPV_AO");
+        if (!string.IsNullOrWhiteSpace(audioOutput))
+            startInfo.ArgumentList.Add($"--ao={audioOutput.Trim()}");
 
         // mpv resolves YouTube pages by shelling out to yt-dlp, and it only looks for it by
         // name on PATH. Hand it the exact executable we resolved so an install outside PATH

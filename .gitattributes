@@ -1,2 +1,5 @@
 # Keep the commit-msg hook runnable by sh: force LF on checkout.
 .githooks/* text eol=lf
+
+# Termux/Linux launchers must keep LF endings or bash fails on the shebang.
+*.sh text eol=lf

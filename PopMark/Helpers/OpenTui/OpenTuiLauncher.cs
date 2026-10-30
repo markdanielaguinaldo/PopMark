@@ -148,10 +148,7 @@ internal static class OpenTuiLauncher
     {
         try
         {
-            var root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            return string.IsNullOrWhiteSpace(root)
-                ? null
-                : Path.Combine(root, "PopMark", "logs", "opentui.log");
+            return Path.Combine(PopMarkState.LogsDirectory, "opentui.log");
         }
         catch
         {
@@ -268,21 +265,39 @@ internal static class OpenTuiLauncher
 
         var candidates = new List<string>();
         var baseDirectory = AppContext.BaseDirectory;
+        var isWindows = OperatingSystem.IsWindows();
+        var bunName = isWindows ? "bun.exe" : "bun";
 
         // Portable packages ship a Bun runtime beside the executable.
-        candidates.Add(Path.Combine(baseDirectory, "bun.exe"));
-        candidates.Add(Path.Combine(baseDirectory, "runtime", "bun.exe"));
+        candidates.Add(Path.Combine(baseDirectory, bunName));
+        candidates.Add(Path.Combine(baseDirectory, "runtime", bunName));
 
         var path = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
         candidates.AddRange(path
             .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(directory => Path.Combine(directory, "bun.exe")));
+            .Select(directory => Path.Combine(directory, bunName)));
 
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
 
-        candidates.Add(Path.Combine(home, ".bun", "bin", "bun.exe"));
-        candidates.Add(Path.Combine(appData, "npm", "node_modules", "bun", "bin", "bun.exe"));
+        if (isWindows)
+        {
+            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            candidates.Add(Path.Combine(home, ".bun", "bin", "bun.exe"));
+            candidates.Add(Path.Combine(appData, "npm", "node_modules", "bun", "bin", "bun.exe"));
+        }
+        else
+        {
+            candidates.Add(Path.Combine(home, ".bun", "bin", "bun"));
+
+            // Termux keeps its packages in $PREFIX/bin; a proot distro has its own bun.
+            var prefix = Environment.GetEnvironmentVariable("PREFIX");
+            if (!string.IsNullOrWhiteSpace(prefix))
+                candidates.Add(Path.Combine(prefix, "bin", "bun"));
+
+            candidates.Add("/data/data/com.termux/files/usr/bin/bun");
+            candidates.Add("/usr/local/bin/bun");
+            candidates.Add("/usr/bin/bun");
+        }
 
         foreach (var candidate in candidates)
         {
@@ -290,16 +305,27 @@ internal static class OpenTuiLauncher
                 return BunCommand(candidate);
         }
 
-        var shim = Path.Combine(appData, "npm", "bun.cmd");
+        if (!isWindows)
+            return null;
+
+        var shim = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "npm",
+            "bun.cmd");
         return File.Exists(shim) ? BunCommand(shim) : null;
     }
 
     private static (string FileName, string? BatchPath) BunCommand(string path)
     {
-        return path.EndsWith(".cmd", StringComparison.OrdinalIgnoreCase) ||
-               path.EndsWith(".bat", StringComparison.OrdinalIgnoreCase)
-            ? ("cmd.exe", path)
-            : (path, null);
+        if (OperatingSystem.IsWindows())
+        {
+            return path.EndsWith(".cmd", StringComparison.OrdinalIgnoreCase) ||
+                   path.EndsWith(".bat", StringComparison.OrdinalIgnoreCase)
+                ? ("cmd.exe", path)
+                : (path, null);
+        }
+
+        return (path, null);
     }
 
     private static string QuoteArgument(string argument) =>

@@ -1,3 +1,4 @@
+using PopMark.Helpers;
 using PopMark.Models;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -12,12 +13,9 @@ public static class PlaybackSessionStore
         WriteIndented = true
     };
 
-    private static string StateDirectory =>
-        Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "PopMark");
+    private static string StateDirectory => PopMarkState.Root;
 
-    private static string SessionFilePath => Path.Combine(StateDirectory, "sessions.json");
+    private static string SessionFilePath => PopMarkState.SessionsFile;
 
     public static int CleanupStaleSessions()
     {
@@ -98,9 +96,17 @@ public static class PlaybackSessionStore
 
     private static int CleanupDiscoveredPopMarkMpvProcesses()
     {
-        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            return 0;
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            return CleanupWindowsMpvProcesses();
 
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+            return CleanupLinuxMpvProcesses();
+
+        return 0;
+    }
+
+    private static int CleanupWindowsMpvProcesses()
+    {
         try
         {
             var startInfo = new ProcessStartInfo
@@ -139,6 +145,79 @@ public static class PlaybackSessionStore
         catch
         {
             return 0;
+        }
+    }
+
+    /// <summary>
+    /// Linux (including Termux proot) has no WMI. Walk /proc and kill only mpv processes
+    /// carrying PopMark's IPC argument, so stale players cannot outlive a crashed app.
+    /// </summary>
+    private static int CleanupLinuxMpvProcesses()
+    {
+        if (!Directory.Exists("/proc"))
+            return 0;
+
+        var cleaned = 0;
+        IEnumerable<string> processDirectories;
+        try
+        {
+            processDirectories = Directory.EnumerateDirectories("/proc");
+        }
+        catch
+        {
+            return 0;
+        }
+
+        foreach (var directory in processDirectories)
+        {
+            if (!int.TryParse(Path.GetFileName(directory), out var processId) ||
+                processId == Environment.ProcessId)
+            {
+                continue;
+            }
+
+            try
+            {
+                var args = ReadLinuxCommandLine(directory);
+                if (args.Length == 0)
+                    continue;
+
+                var isMpv = Path.GetFileName(args[0]).StartsWith("mpv", StringComparison.OrdinalIgnoreCase);
+                var isPopMarkSession = args.Any(arg =>
+                    arg.StartsWith("--input-ipc-server=", StringComparison.Ordinal) &&
+                    arg.Contains("popmark-", StringComparison.Ordinal));
+
+                if (!isMpv || !isPopMarkSession)
+                    continue;
+
+                using var process = Process.GetProcessById(processId);
+                if (process.HasExited)
+                    continue;
+
+                process.Kill(entireProcessTree: true);
+                cleaned++;
+            }
+            catch
+            {
+            }
+        }
+
+        return cleaned;
+    }
+
+    private static string[] ReadLinuxCommandLine(string processDirectory)
+    {
+        try
+        {
+            var cmdline = File.ReadAllText(Path.Combine(processDirectory, "cmdline"));
+            return cmdline
+                .Split('\0', StringSplitOptions.RemoveEmptyEntries)
+                .Where(part => !string.IsNullOrWhiteSpace(part))
+                .ToArray();
+        }
+        catch
+        {
+            return Array.Empty<string>();
         }
     }
 

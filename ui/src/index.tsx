@@ -5,7 +5,8 @@ import { theme } from "./theme";
 
 if (!process.stdout.isTTY) {
   console.error("PopMark's OpenTUI frontend needs an interactive terminal.");
-  console.error("Run it from Windows Terminal, or use the C# TUI: PopMark.exe");
+  console.error("Run it from Windows Terminal, Termux, or any ANSI terminal. PopMark.exe");
+  console.error("without Bun falls back to the C# interface.");
   process.exit(1);
 }
 

@@ -323,7 +323,7 @@ export function ToolsDialog(props: {
       </box>
 
       <text fg={theme.faint} selectable={false} wrapMode="word">
-        For a custom binary, type: tools set yt-dlp C:\path\to\yt-dlp.exe
+        For a custom binary, type: tools set yt-dlp &lt;full path to yt-dlp&gt;
       </text>
     </Overlay>
   );

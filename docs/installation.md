@@ -6,13 +6,16 @@ PopMark has no installer, no service, and no admin-only steps.
 
 - **Windows x64** for the released build. The portable zip includes the .NET backend,
   Bun, and the compiled OpenTUI assets, so neither .NET nor Bun needs to be installed.
+- **Linux (x64 or arm64)** from a portable `build-linux` package, including Android
+  through Termux + proot-distro. See [Android / Termux](termux.md).
 - **Network access to YouTube** for playback, and to `github.com` / `api.github.com` when
   PopMark installs a tool.
 - **.NET 9 SDK and Bun 1.3.14+** only if you build from source.
 - **`yt-dlp` and `mpv`** unless you let PopMark install them from the Tools panel.
 
-The source has fallbacks for Unix-style `PATH` and tool directories, but the managed
-installer downloads Windows x64 packages. Treat the released build as Windows-only.
+The managed Windows installer downloads Windows x64 packages. On Linux, `yt-dlp` is
+downloaded for the current CPU architecture and `mpv` is installed through the system
+package manager (`apt`, `dnf`, `pacman`, `apk`, `pkg`, or Homebrew).
 
 ## Portable build
 
@@ -62,6 +65,24 @@ For a release build:
 `build-portable.ps1` also runs `bun install` before building, so a fresh clone does not
 need a separate frontend dependency step.
 
+For Linux, including an ARM64 phone:
+
+```powershell
+.\scripts\build-linux.ps1 -Runtime linux-arm64   # phones, Raspberry Pi, ARM servers
+.\scripts\build-linux.ps1 -Runtime linux-x64     # ordinary Linux desktops
+```
+
+On Linux itself use `./scripts/build-linux.sh 1.1.2 linux-arm64`. The resulting
+`releases/*.tar.gz` is self-contained; `mpv` still comes from the system package
+manager. See [Android / Termux](termux.md) for the phone walkthrough.
+
+An archive built on Windows does not carry Unix permission bits. On a Linux desktop,
+mark the three executables before the first run:
+
+```bash
+chmod +x PopMark bun tools/yt-dlp/yt-dlp
+```
+
 The backend build output lands under `PopMark\bin\Release\net9.0\`; the frontend bundle
 lands under `ui\dist\`. The default launcher starts the OpenTUI frontend automatically.
 Use `--legacy-ui` only to inspect the retired C# interface; the OpenTUI frontend is the
@@ -78,8 +99,13 @@ Downloads:
   [shinchiro/mpv-winbuild-cmake](https://github.com/shinchiro/mpv-winbuild-cmake/releases),
   extracted automatically.
 
-Both go under `%LOCALAPPDATA%\PopMark\tools`, and PopMark pins them so a broken system
-install cannot take priority later. No administrator rights are used.
+On Linux, `tools install yt-dlp` downloads the release for the current architecture
+(`yt-dlp_linux_aarch64` on a phone), and `tools install mpv` uses the distro package
+manager. In a Termux proot distro that is `apt`, which needs no extra confirmation.
+
+On Windows both go under `%LOCALAPPDATA%\PopMark\tools`, and PopMark pins them so a
+broken system install cannot take priority later. On Linux only `yt-dlp` is downloaded
+and pinned; `mpv` stays with the package manager. No administrator rights are used.
 
 If you decline, PopMark still starts. Install the tools yourself and point PopMark at
 them with `tools set`, or use `tools install` later. See

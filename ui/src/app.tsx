@@ -901,6 +901,12 @@ export function App(props: {
         onRef={onInputRef}
         onFocusInput={focusInput}
         onEnterNavigation={enterNavigation}
+        onOpenHelp={openHelp}
+        onOpenTools={openTools}
+        onOpenFocus={openFocus}
+        onOpenLogs={openLogs}
+        onCycleTheme={() => changeTheme(1)}
+        onQuit={() => void quit()}
       />
 
       <Show when={splash()} fallback={<box height={0} />}>

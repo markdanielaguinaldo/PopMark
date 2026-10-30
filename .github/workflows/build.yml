@@ -48,3 +48,47 @@ jobs:
       - name: Build frontend bundle
         working-directory: ui
         run: bun run build
+
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+
+      - name: Build and test backend
+        run: |
+          dotnet build PopMark.sln --configuration Release
+          dotnet test PopMark.sln --configuration Release --no-build
+
+      - name: Install frontend dependencies
+        working-directory: ui
+        run: bun install --frozen-lockfile
+
+      - name: Type-check and test frontend
+        working-directory: ui
+        run: |
+          bun run typecheck
+          bun run test
+
+      - name: Publish linux-arm64 backend
+        run: |
+          dotnet publish PopMark/PopMark.csproj \
+            --configuration Release \
+            --runtime linux-arm64 \
+            --self-contained true \
+            -p:PublishSingleFile=true \
+            -p:IncludeNativeLibrariesForSelfExtract=true \
+            -p:InvariantGlobalization=true \
+            -p:DebugType=None \
+            -p:DebugSymbols=false \
+            -o artifacts/linux-arm64

@@ -20,12 +20,14 @@ missing.
 
 For each tool, PopMark looks in this order:
 
-1. A path pinned in `%LOCALAPPDATA%\PopMark\tools.json`.
+1. A path pinned in `tools.json` (`%LOCALAPPDATA%\PopMark` on Windows,
+   `~/.local/share/PopMark` on Linux).
 2. `POPMARK_YTDLP_PATH` / `POPMARK_MPV_PATH` (or `POPMARK_YTDLP` / `POPMARK_MPV`).
-3. PopMark's own copy under `%LOCALAPPDATA%\PopMark\tools\<tool>\`.
-4. `PATH`, plus the usual WinGet, Scoop, Chocolatey, and Program Files tool folders.
+3. PopMark's own copy under `tools/<tool>/` in the state folder.
+4. `PATH`, plus the usual tool folders for the platform.
 5. On Windows, `where.exe`, then a bounded scan of WinGet, Scoop, Chocolatey, Program
-   Files, and `%LOCALAPPDATA%\Programs` package folders.
+   Files, and `%LOCALAPPDATA%\Programs` package folders. On Linux, a bounded scan of
+   `/opt`, `/usr/local`, and `~/.local`.
 
 Step 5 covers installs that never landed on `PATH`, such as a WinGet package folder like
 `%LOCALAPPDATA%\Microsoft\WinGet\Packages\yt-dlp.yt-dlp_Microsoft.Winget.Source_8wekyb3d8bbwe\yt-dlp.exe`.
@@ -46,12 +48,13 @@ mpv: C:\Program Files\mpv\mpv.exe [ok]
 | Command | Action |
 | --- | --- |
 | `tools` | Show the resolved path, whether it runs, and whether it is pinned. |
-| `tools install [yt-dlp, mpv, or all]` | Download a private copy into `%LOCALAPPDATA%\PopMark\tools` and pin it. |
+| `tools install [yt-dlp, mpv, or all]` | Install a private copy of `yt-dlp`, and install `mpv` through the Linux package manager when not on Windows. |
 | `tools set <tool> <path>` | Pin an executable you already have. The path must exist and run. |
 | `tools clear <tool>` | Forget a pin and fall back to discovery. |
 
 `tools install` behaves as a repair: it downloads the current release and pins it, so a
-broken or out-of-date system copy cannot keep winning.
+broken or out-of-date system copy cannot keep winning. On Linux, `mpv` stays owned by the
+package manager and PopMark pins only tools it downloaded itself.
 
 ### Why `mpv` needs to know where `yt-dlp` is
 
@@ -69,7 +72,9 @@ by the child process.
 
 ## State files
 
-Everything PopMark remembers lives under `%LOCALAPPDATA%\PopMark`:
+Everything PopMark remembers lives under `%LOCALAPPDATA%\PopMark` on Windows, or
+`$XDG_DATA_HOME/PopMark` (usually `~/.local/share/PopMark`) on Linux and Android.
+`POPMARK_HOME` overrides both:
 
 | File | Contents |
 | --- | --- |
@@ -99,9 +104,10 @@ scheduled launch does not pick up yesterday's queue.
 ### Stale sessions
 
 If PopMark exits without cleaning up, `mpv` can be left running. On startup PopMark reads
-`sessions.json` and terminates anything it recorded, then scans for `mpv.exe` processes
-still carrying a `--input-ipc-server=*popmark-*` argument. The message
-`Cleared N previous PopMark playback session(s).` means that happened.
+`sessions.json` and terminates anything it recorded, then scans for `mpv` processes still
+carrying a `--input-ipc-server=*popmark-*` argument (`mpv.exe` on Windows, `/proc` on
+Linux). The message `Cleared N previous PopMark playback session(s).` means that
+happened.
 
 Only `mpv` processes launched by PopMark are targeted; a normal `mpv` window is left
 alone.

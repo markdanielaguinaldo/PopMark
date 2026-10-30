@@ -152,6 +152,7 @@ cd /opt/popmark
 exec /opt/popmark/PopMark "$@"
 LAUNCHER
 chmod +x "$ROOTFS/usr/local/bin/popmark"
+[ -x "$ROOTFS/usr/local/bin/popmark" ] || die "Could not write the in-distro launcher."
 
 say "Writing the Termux launcher..."
 cat > "$PREFIX/bin/popmark" <<'LAUNCHER'
@@ -165,7 +166,23 @@ pactl load-module module-native-protocol-tcp auth-anonymous=1 port=4713 >/dev/nu
 termux-wake-lock >/dev/null 2>&1 || true
 trap 'termux-wake-unlock >/dev/null 2>&1 || true' EXIT
 
-proot-distro login debian -- /usr/local/bin/popmark "$@"
+# Prefer the in-distro launcher, but do not depend on it: if it is missing or not
+# executable, run the packaged binary directly with the same environment.
+proot-distro login debian -- /bin/sh -c '
+    if [ -x /usr/local/bin/popmark ]; then
+        exec /usr/local/bin/popmark "$@"
+    fi
+    if [ ! -x /opt/popmark/PopMark ]; then
+        echo "PopMark is not installed in Debian. Rerun scripts/termux-install.sh." >&2
+        exit 1
+    fi
+    PULSE_SERVER="${PULSE_SERVER:-tcp:127.0.0.1:4713}"
+    POPMARK_MPV_AO="${POPMARK_MPV_AO:-pulse}"
+    POPMARK_HOME="${POPMARK_HOME:-$HOME/.local/share/PopMark}"
+    export PULSE_SERVER POPMARK_MPV_AO POPMARK_HOME
+    cd /opt/popmark || exit 1
+    exec ./PopMark "$@"
+' sh "$@"
 LAUNCHER
 chmod +x "$PREFIX/bin/popmark"
 

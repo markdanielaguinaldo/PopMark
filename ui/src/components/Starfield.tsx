@@ -128,6 +128,9 @@ function buildRow(
 /**
  * Minimal three-depth starfield for Focus View. Stars never blink in or out;
  * only their color drifts slowly, so the effect reads as ambient light.
+ *
+ * Keep `zIndex={-1}`. Without it the full-screen backdrop is painted above the
+ * Focus View buttons and swallows every click and tap.
  */
 export function Starfield(props: { width: number; height: number }) {
   const [tick, setTick] = createSignal(0);
@@ -158,6 +161,7 @@ export function Starfield(props: { width: number; height: number }) {
       left={0}
       width="100%"
       height="100%"
+      zIndex={-1}
       flexDirection="column"
       overflow="hidden"
     >

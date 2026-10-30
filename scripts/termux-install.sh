@@ -91,21 +91,41 @@ STAGE="$ROOTFS/opt/popmark.new"
 rm -rf "$STAGE"
 mkdir -p "$STAGE"
 tar -xzf "$TARBALL" -C "$STAGE" || die "Could not unpack $TARBALL"
-[ -f "$STAGE/PopMark" ] || die "The archive does not contain a PopMark binary."
-[ -d "$STAGE/ui/dist" ] || die "The archive does not contain ui/dist."
+
+# Some archives keep everything under one top-level folder; accept either shape.
+ROOT="$STAGE"
+if [ ! -f "$ROOT/PopMark" ]; then
+    nested=$(find "$STAGE" -maxdepth 4 -type f -name PopMark 2>/dev/null | head -n 1 || true)
+    if [ -n "$nested" ]; then
+        ROOT="$(dirname "$nested")"
+        say "Using $ROOT as the application root."
+    fi
+fi
+
+if [ ! -f "$ROOT/PopMark" ] || [ ! -d "$ROOT/ui/dist" ]; then
+    printf '\n--- contents of %s (first 20 entries) ---\n' "$TARBALL" >&2
+    tar -tzf "$TARBALL" 2>/dev/null | head -n 20 >&2 || true
+    printf -- '---\n' >&2
+    die "This is not a PopMark portable package: it has no PopMark binary and ui/dist.\n\
+Copy the archive built by scripts/build-linux.ps1 -Runtime linux-arm64, or download it with:\n\
+  curl -L -o ~/storage/downloads/PopMark-arm64.tar.gz <release-url>"
+fi
 
 # Byte 18-19 of an ELF header: 0xB700 is little-endian aarch64, 0x3E00 is x86-64.
 # Checking beats trusting the file name, especially after a rename.
-MACHINE="$(od -An -tx1 -j18 -N2 "$STAGE/PopMark" 2>/dev/null | tr -d ' \n')"
+MACHINE="$(od -An -tx1 -j18 -N2 "$ROOT/PopMark" 2>/dev/null | tr -d ' \n')"
 [ "$MACHINE" = "b700" ] || die \
     "This is not an arm64 build (ELF machine 0x${MACHINE:-unknown}). Build it with scripts/build-linux.ps1 -Runtime linux-arm64."
 
-chmod +x "$STAGE/PopMark" 2>/dev/null || true
-chmod +x "$STAGE/bun" 2>/dev/null || true
-chmod +x "$STAGE/tools/yt-dlp/yt-dlp" 2>/dev/null || true
+chmod +x "$ROOT/PopMark" 2>/dev/null || true
+chmod +x "$ROOT/bun" 2>/dev/null || true
+chmod +x "$ROOT/tools/yt-dlp/yt-dlp" 2>/dev/null || true
 
 rm -rf "$INSTALL_DIR"
-mv "$STAGE" "$INSTALL_DIR"
+mv "$ROOT" "$INSTALL_DIR"
+if [ "$ROOT" != "$STAGE" ]; then
+    rm -rf "$STAGE"
+fi
 
 say "Writing the in-distro launcher..."
 mkdir -p "$ROOTFS/usr/local/bin"

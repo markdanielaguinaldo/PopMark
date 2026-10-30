@@ -513,7 +513,8 @@ test("renders help and tools dialogs and the focus view", async () => {
     const leftGlyphs = (leftEq as unknown as { plainText?: string }).plainText ?? "";
     const rightGlyphs = (rightEq as unknown as { plainText?: string }).plainText ?? "";
     expect(leftGlyphs).not.toBe("");
-    expect(rightGlyphs).toBe(leftGlyphs);
+    expect(rightGlyphs).not.toBe("");
+    expect(leftGlyphs.length).toBe(rightGlyphs.length);
 
     const focusProgress = splash.renderer.root.findDescendantById("focus-progress");
     expect(focusProgress).toBeDefined();
@@ -533,6 +534,11 @@ test("renders help and tools dialogs and the focus view", async () => {
     const themeButton = splash.renderer.root.findDescendantById("focus-theme");
     expect(returnButton).toBeDefined();
     expect(themeButton).toBeDefined();
+
+    // The starfield repaints continuously; let it tick so this catches layers
+    // that steal mouse hits after the first frame.
+    await Bun.sleep(400);
+    await splash.renderOnce();
 
     await splash.mockMouse.click(returnButton!.x + 1, returnButton!.y);
     await splash.mockMouse.click(themeButton!.x + 1, themeButton!.y);

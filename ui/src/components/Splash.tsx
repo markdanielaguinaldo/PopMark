@@ -58,15 +58,18 @@ export function Splash(props: {
       left={0}
       width="100%"
       height="100%"
-      zIndex={40}
       backgroundColor={theme.bg}
       flexDirection="column"
       alignItems="center"
-      justifyContent={tight() ? "flex-start" : "center"}
-      paddingTop={tight() ? 1 : 0}
-      gap={tight() ? 0 : 1}
+      justifyContent="center"
+      gap={1}
     >
-      <Starfield width={props.width} height={props.height} />
+      {/* The starfield repaints every 150 ms. It is hidden on phone widths so it
+          cannot sit on top of the controls in the scene's hit test, and to spare
+          the proot CPU. */}
+      <Show when={props.width >= 60 && props.height >= 26} fallback={<box height={0} />}>
+        <Starfield width={props.width} height={props.height} />
+      </Show>
 
       <ascii_font text="POPMARK" font={font()} color={[...brandGradient()]} selectable={false} />
 
@@ -163,7 +166,7 @@ export function Splash(props: {
 
       <box height={1} />
 
-      <box flexDirection="column" gap={0} alignItems="center" flexShrink={0}>
+      <box flexDirection="column" gap={1} alignItems="center" flexShrink={0}>
         {/* Tap targets: phones rarely have F-keys, and the termux keyboard hides
             the input row. Every focus-view action is reachable here. */}
         <box flexDirection="row" gap={1} alignItems="center">
@@ -173,7 +176,7 @@ export function Splash(props: {
             onPress={props.onClose}
             tone="accent"
             variant="ghost"
-            height={props.width < 60 ? 3 : 1}
+            height={props.width < 60 || props.height < 26 ? 3 : 1}
           />
           <ActionButton
             id="focus-play"
@@ -181,7 +184,7 @@ export function Splash(props: {
             onPress={props.onTogglePlayback}
             tone="muted"
             variant="ghost"
-            height={props.width < 60 ? 3 : 1}
+            height={props.width < 60 || props.height < 26 ? 3 : 1}
           />
           <ActionButton
             id="focus-theme"
@@ -189,18 +192,10 @@ export function Splash(props: {
             onPress={() => props.onCycleTheme(1)}
             tone="highlight"
             variant="ghost"
-            height={props.width < 60 ? 3 : 1}
-          />
-          <ActionButton
-            id="focus-theme-back"
-            label="◀"
-            onPress={() => props.onCycleTheme(-1)}
-            tone="muted"
-            variant="ghost"
-            height={props.width < 60 ? 3 : 1}
+            height={props.width < 60 || props.height < 26 ? 3 : 1}
           />
         </box>
-        <Show when={props.width >= 80} fallback={<box height={0} />}>
+        <Show when={props.width >= 80 && !tight()} fallback={<box height={0} />}>
           <text fg={theme.faint} selectable={false} wrapMode="none">
             F3 return · space play/pause · ←/→ seek · F5 theme
           </text>

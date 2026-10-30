@@ -145,7 +145,7 @@ without a keyboard:
 - **Tap or drag the progress bar** to seek, and the **volume slider** to set volume.
 - **Tap the footer buttons** on narrow screens: `HELP`, `TOOLS`, `FOCUS`, `LOGS`,
   `THEME`, and `QUIT`. The F-keys exist for hardware keyboards but are not needed.
-- **In Focus View**, tap `RETURN`, `PLAY`/`PAUSE`, `THEME`, or `◀` to leave, toggle
+- **In Focus View**, tap `RETURN`, `PLAY`/`PAUSE`, `THEME` to leave, toggle
   playback, or cycle the theme without touching the keyboard.
 
 The transport row (`PREV`, `PLAY`/`PAUSE`, `NEXT`, `STOP`, `SHUFFLE`) is always

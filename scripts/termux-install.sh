@@ -99,8 +99,11 @@ Or locate a copy anywhere on the device:\n\
 fi
 
 say "Installing Termux packages (proot-distro, audio, wake lock)..."
-pkg update -y >/dev/null
-pkg install -y proot-distro pulseaudio tar termux-tools >/dev/null
+# `pkg` wraps apt, and apt warns "does not have a stable CLI interface" whenever
+# it runs without a terminal. Hide that noise and report our own failure instead.
+pkg update -y >/dev/null 2>&1 || say "Package index update failed; continuing with the current index."
+pkg install -y proot-distro pulseaudio tar termux-tools >/dev/null 2>&1 || die \
+    "Could not install proot-distro, pulseaudio, tar, and termux-tools.\nRun 'pkg install -y proot-distro pulseaudio' manually, then retry."
 
 # proot-distro 5.x stores containers under containers/<name>/rootfs; older
 # releases used installed-rootfs/<name>. Resolve whichever actually holds a

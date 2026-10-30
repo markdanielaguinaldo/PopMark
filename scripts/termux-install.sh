@@ -48,18 +48,35 @@ esac
 # Without an argument, look for the newest archive. ~/storage/downloads is a
 # symlink, so find needs -H (follow a symlink starting point) or it descends
 # nowhere and reports no match.
+is_package() {
+    tar -tzf "$1" 2>/dev/null | grep -qE '^(\./)?PopMark$'
+}
+
 SEARCHED=""
+CANDIDATES=""
+SEEN=""
 if [ -z "$TARBALL" ]; then
     for directory in "$HOME/storage/downloads" "$HOME/storage/shared/Download" "$HOME"; do
         [ -d "$directory" ] || continue
         SEARCHED="$SEARCHED $directory"
-        candidate=$(find -H "$directory" -maxdepth 1 -type f -name 'PopMark-*.tar.gz' 2>/dev/null | sort | tail -n 1 || true)
-        if [ -n "$candidate" ]; then
+        CANDIDATES="$CANDIDATES$(find -H "$directory" -maxdepth 1 -type f -name 'PopMark-*.tar.gz' 2>/dev/null)
+"
+    done
+
+    # Newest first, but skip anything that is not a portable package, such as a
+    # GitHub source snapshot that happens to share the name.
+    while IFS= read -r candidate; do
+        [ -n "$candidate" ] || continue
+        if is_package "$candidate"; then
             TARBALL="$candidate"
             say "Found $TARBALL"
             break
         fi
-    done
+        SEEN="$SEEN  $candidate
+"
+    done <<EOF
+$(printf '%s' "$CANDIDATES" | sort -r)
+EOF
 fi
 
 if [ -n "$TARBALL" ] && [ ! -f "$TARBALL" ]; then
@@ -69,6 +86,11 @@ Check the exact name:\n\
 fi
 
 if [ -z "$TARBALL" ]; then
+    if [ -n "$SEEN" ]; then
+        die "Found archives, but none is a PopMark portable package:\n${SEEN}\
+Pass the package explicitly, for example:\n\
+  bash ~/PopMark/scripts/termux-install.sh ~/PopMark-download.tar.gz"
+    fi
     die "No PopMark .tar.gz found (searched:${SEARCHED:- nothing}).\n\
 Pass the path yourself, for example:\n\
   bash ~/PopMark/scripts/termux-install.sh ~/storage/downloads/PopMark-*.tar.gz\n\

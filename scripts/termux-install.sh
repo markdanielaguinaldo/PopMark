@@ -14,7 +14,7 @@
 set -euo pipefail
 
 say() { printf '\033[1;36m[PopMark]\033[0m %s\n' "$*"; }
-die() { printf '\033[1;31m[PopMark]\033[0m %s\n' "$*" >&2; exit 1; }
+die() { printf '\033[1;31m[PopMark]\033[0m %b\n' "$*" >&2; exit 1; }
 
 [ -n "${PREFIX:-}" ] || die "Run this inside Termux. See docs/termux.md."
 [ -d /data/data/com.termux/files/usr ] || die "This does not look like Termux."
@@ -29,19 +29,35 @@ ROOTFS="$PREFIX/var/lib/proot-distro/installed-rootfs/$DISTRO"
 INSTALL_DIR="$ROOTFS/opt/popmark"
 TARBALL="${1:-}"
 
+# Let the caller write ~/storage/... instead of the full expanded path.
+case "$TARBALL" in
+    "~/"*) TARBALL="$HOME/${TARBALL#"~/"}" ;;
+esac
+
+# Without an argument, look for the newest archive. ~/storage/downloads is a
+# symlink, so find needs -H (follow a symlink starting point) or it descends
+# nowhere and reports no match.
+SEARCHED=""
 if [ -z "$TARBALL" ]; then
     for directory in "$HOME/storage/downloads" "$HOME/storage/shared/Download" "$HOME"; do
         [ -d "$directory" ] || continue
-        candidate=$(find "$directory" -maxdepth 1 -type f -name 'PopMark-*-linux-arm64-portable.tar.gz' 2>/dev/null | sort | tail -n 1 || true)
+        SEARCHED="$SEARCHED $directory"
+        candidate=$(find -H "$directory" -maxdepth 1 -type f -name 'PopMark-*.tar.gz' 2>/dev/null | sort | tail -n 1 || true)
         if [ -n "$candidate" ]; then
             TARBALL="$candidate"
+            say "Found $TARBALL"
             break
         fi
     done
 fi
 
-[ -n "$TARBALL" ] && [ -f "$TARBALL" ] || die \
-    "No linux-arm64 portable tarball found. Pass its path, or copy it into ~/storage/downloads."
+if [ -z "$TARBALL" ] || [ ! -f "$TARBALL" ]; then
+    die "No PopMark .tar.gz found (looked in:${SEARCHED:- nowhere}).\n\
+Pass the path yourself, for example:\n\
+  bash ~/PopMark/scripts/termux-install.sh ~/storage/downloads/PopMark-*-linux-arm64-portable.tar.gz\n\
+Or locate a copy anywhere on the device:\n\
+  find -H /sdcard -iname 'PopMark-*.tar.gz' 2>/dev/null"
+fi
 
 say "Installing Termux packages (proot-distro, audio, wake lock)..."
 pkg update -y >/dev/null
@@ -71,6 +87,12 @@ mkdir -p "$STAGE"
 tar -xzf "$TARBALL" -C "$STAGE" || die "Could not unpack $TARBALL"
 [ -f "$STAGE/PopMark" ] || die "The archive does not contain a PopMark binary."
 [ -d "$STAGE/ui/dist" ] || die "The archive does not contain ui/dist."
+
+# Byte 18-19 of an ELF header: 0xB700 is little-endian aarch64, 0x3E00 is x86-64.
+# Checking beats trusting the file name, especially after a rename.
+MACHINE="$(od -An -tx1 -j18 -N2 "$STAGE/PopMark" 2>/dev/null | tr -d ' \n')"
+[ "$MACHINE" = "b700" ] || die \
+    "This is not an arm64 build (ELF machine 0x${MACHINE:-unknown}). Build it with scripts/build-linux.ps1 -Runtime linux-arm64."
 
 chmod +x "$STAGE/PopMark" 2>/dev/null || true
 chmod +x "$STAGE/bun" 2>/dev/null || true

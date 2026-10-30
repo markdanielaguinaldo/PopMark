@@ -38,7 +38,7 @@ esac
 case "$TARBALL" in
     http://* | https://*)
         URL="$TARBALL"
-        command -v curl >/dev/null 2>&1 || pkg install -y curl
+        command -v curl >/dev/null 2>&1 || pkg install -y curl </dev/null >/dev/null 2>&1
         TARBALL="$HOME/PopMark-download.tar.gz"
         say "Downloading $URL..."
         curl -fL --progress-bar -o "$TARBALL" "$URL" || die "Download failed: $URL"
@@ -101,8 +101,8 @@ fi
 say "Installing Termux packages (proot-distro, audio, wake lock)..."
 # `pkg` wraps apt, and apt warns "does not have a stable CLI interface" whenever
 # it runs without a terminal. Hide that noise and report our own failure instead.
-pkg update -y >/dev/null 2>&1 || say "Package index update failed; continuing with the current index."
-pkg install -y proot-distro pulseaudio tar termux-tools >/dev/null 2>&1 || die \
+pkg update -y </dev/null >/dev/null 2>&1 || say "Package index update failed; continuing with the current index."
+pkg install -y proot-distro pulseaudio tar termux-tools </dev/null >/dev/null 2>&1 || die \
     "Could not install proot-distro, pulseaudio, tar, and termux-tools.\nRun 'pkg install -y proot-distro pulseaudio' manually, then retry."
 
 # proot-distro 5.x stores containers under containers/<name>/rootfs; older
@@ -143,8 +143,8 @@ proot-distro login "$DISTRO" -- bash -lc '
     set -e
     export DEBIAN_FRONTEND=noninteractive
     if ! command -v mpv >/dev/null 2>&1; then
-        apt-get update
-        apt-get install -y --no-install-recommends mpv ca-certificates
+        apt-get update </dev/null
+        apt-get install -y --no-install-recommends mpv ca-certificates </dev/null
     fi
 '
 

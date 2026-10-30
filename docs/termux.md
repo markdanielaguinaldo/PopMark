@@ -26,7 +26,31 @@ Termux
 - A desktop machine is recommended for the build, but you can also build inside
   the proot distro (see [Building on the phone](#building-on-the-phone)).
 
-## 1. Build the ARM64 package
+## 1. Get the ARM64 package
+
+### From GitHub Releases (no desktop needed)
+
+Every tagged or manual run of the **Release for Android (Termux)** workflow
+attaches the package to a release. Download it on the phone and hand the URL to
+the installer in one step:
+
+```bash
+cd ~/PopMark
+bash scripts/termux-install.sh \
+  https://github.com/markdanielaguinaldo/PopMark/releases/download/termux-1.1.2/PopMark-1.1.2-OpenTUI-linux-arm64-portable.tar.gz
+```
+
+The installer downloads the archive itself, so nothing needs to be copied from a
+computer. Skip to [step 3](#3-install-from-termux); the download *is* the archive.
+To trigger a build, run the workflow from the repository's **Actions** tab or push
+a tag:
+
+```bash
+git tag termux-1.1.2
+git push origin termux-1.1.2
+```
+
+### Build it yourself
 
 On a machine with the .NET 9 SDK and Bun:
 
@@ -52,6 +76,9 @@ On Linux or inside proot, the equivalent is:
 ```
 
 ## 2. Copy the archive to the phone
+
+Skip this if you passed a release URL to the installer above; it downloads the
+archive directly.
 
 Pick whichever is easiest:
 

@@ -34,6 +34,18 @@ case "$TARBALL" in
     "~/"*) TARBALL="$HOME/${TARBALL#"~/"}" ;;
 esac
 
+# A URL downloads straight from a GitHub release, so nothing has to be copied
+# over from a computer first.
+case "$TARBALL" in
+    http://* | https://*)
+        URL="$TARBALL"
+        command -v curl >/dev/null 2>&1 || pkg install -y curl
+        TARBALL="$HOME/PopMark-download.tar.gz"
+        say "Downloading $URL..."
+        curl -fL --progress-bar -o "$TARBALL" "$URL" || die "Download failed: $URL"
+        ;;
+esac
+
 # Without an argument, look for the newest archive. ~/storage/downloads is a
 # symlink, so find needs -H (follow a symlink starting point) or it descends
 # nowhere and reports no match.

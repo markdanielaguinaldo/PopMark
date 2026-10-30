@@ -1,0 +1,71 @@
+name: Release for Android (Termux)
+
+# Builds the self-contained linux-arm64 package on GitHub and attaches it to a
+# GitHub Release, so a phone can install straight from the repository with no
+# desktop, cable, or adb involved:
+#
+#   curl -L -o ~/PopMark.tar.gz \
+#     https://github.com/<owner>/<repo>/releases/download/termux-<version>/<asset>
+#   bash scripts/termux-install.sh <asset-url>
+#
+# Trigger it from the Actions tab, by pushing a termux-* tag, or by changing
+# this file on main (a one-off convenience for the initial release).
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "termux-*"
+    branches:
+      - main
+    paths:
+      - ".github/workflows/release-termux.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  termux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+
+      - name: Build linux-arm64 package
+        run: ./scripts/build-linux.sh 1.1.2 linux-arm64
+
+      - name: Publish release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: termux-1.1.2
+          name: PopMark 1.1.2 for Android (Termux)
+          body: |
+            Self-contained `linux-arm64` package for Android, run through Termux +
+            proot-distro (the .NET runtime and Bun need glibc, not Bionic).
+
+            ## Install from Termux
+
+            ```bash
+            pkg install -y proot-distro pulseaudio curl
+            git clone https://github.com/${{ github.repository }}.git
+            cd PopMark
+            bash scripts/termux-install.sh \
+              https://github.com/${{ github.repository }}/releases/download/termux-1.1.2/PopMark-1.1.2-OpenTUI-linux-arm64-portable.tar.gz
+            popmark
+            ```
+
+            The installer creates a Debian proot distro, installs `mpv` with apt,
+            unpacks PopMark to `/opt/popmark`, and wires audio to Termux's
+            PulseAudio server. See `docs/termux.md`.
+          files: releases/PopMark-1.1.2-OpenTUI-linux-arm64-portable.tar.gz
+          fail_on_unmatched_files: true

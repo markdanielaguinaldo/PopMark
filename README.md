@@ -66,7 +66,15 @@ package on a desktop:
 ```
 
 Copy the archive to the phone and get `scripts/termux-install.sh` there (clone the
-repo, or copy that one file). Then in Termux:
+repo, or copy that one file). The installer can also download the release asset
+itself, so from Termux you can skip the copy entirely:
+
+```bash
+bash scripts/termux-install.sh \
+  https://github.com/markdanielaguinaldo/PopMark/releases/download/termux-1.1.2/PopMark-1.1.2-OpenTUI-linux-arm64-portable.tar.gz
+```
+
+Otherwise, in Termux:
 
 ```bash
 pkg install -y proot-distro pulseaudio

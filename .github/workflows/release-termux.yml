@@ -42,7 +42,7 @@ jobs:
           bun-version: 1.4.4
 
       - name: Build linux-arm64 package
-        run: ./scripts/build-linux.sh 1.1.2 linux-arm64
+        run: bash scripts/build-linux.sh 1.1.2 linux-arm64
 
       - name: Publish release asset
         uses: softprops/action-gh-release@v2

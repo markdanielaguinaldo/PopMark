@@ -238,6 +238,23 @@ proot-distro login debian -- /bin/sh -c '
 LAUNCHER
 chmod +x "$PREFIX/bin/popmark"
 
+say "Adding always-visible Termux keys (F1-F5, arrows, space)..."
+TERMUX_PROPS="$HOME/.termux/termux.properties"
+if [ -f "$TERMUX_PROPS" ] && grep -q '^[[:space:]]*extra-keys' "$TERMUX_PROPS"; then
+    say "Keeping your existing extra-keys setting."
+else
+    mkdir -p "$HOME/.termux"
+    if [ -f "$TERMUX_PROPS" ]; then
+        cp "$TERMUX_PROPS" "$TERMUX_PROPS.popmark-backup" 2>/dev/null || true
+    fi
+    cat >> "$TERMUX_PROPS" <<'KEYS'
+
+# Added by PopMark: keys above the keyboard, usable without opening it.
+extra-keys = [['ESC','TAB','CTRL','ALT','LEFT','UP','RIGHT'],['F1','F2','F3','F4','F5','SPACE','ENTER']]
+KEYS
+fi
+termux-reload-settings >/dev/null 2>&1 || true
+
 say "Done."
 cat <<'EOF'
 

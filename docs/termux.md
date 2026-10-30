@@ -153,13 +153,22 @@ touchable. Below 60 columns the layout switches to a phone mode: the footer spli
 into two button rows, the transport and volume stack, and decorative rows are
 dropped so nothing is clipped.
 
-### Optional: F-keys in the Termux keyboard
+### Termux shortcut keys
 
-Add this to `~/.termux/termux.properties`, then restart Termux:
+The installer adds a two-row key strip above the keyboard, so these keys are one
+tap away even with the soft keyboard closed:
 
 ```properties
-extra-keys = [['ESC','TAB','CTRL','ALT','UP','DOWN','LEFT','RIGHT'],['F1','F2','F3','F4','F5','HOME','END','PGUP','PGDN']]
+extra-keys = [['ESC','TAB','CTRL','ALT','LEFT','UP','RIGHT'],['F1','F2','F3','F4','F5','SPACE','ENTER']]
 ```
+
+It appends the setting to `~/.termux/termux.properties` only when no `extra-keys`
+line exists (an existing one is left alone, and a backup is written first). Use
+`termux-reload-settings` to apply it without restarting.
+
+`F3` leaves Focus View, `F5` cycles themes, and the arrow/space keys drive
+playback and seeking — all without opening the keyboard. Delete the
+`extra-keys` line to remove the strip.
 
 ## Audio
 
@@ -228,6 +237,7 @@ Deleting the distro removes the queue and settings too.
 | Playback stops when the screen locks | Keep Termux awake, disable battery optimisation, enable the child-process setting above. |
 | `Failed to resolve host` / 403 from YouTube | Update yt-dlp with `tools install yt-dlp`. |
 | Interface looks torn or oversized | Use Termux at a smaller font size, or turn the phone to landscape for the full sidebar. |
+| Taps in Focus View do nothing | Confirm the installed bundle is current: `grep -c focus-return "$PREFIX/var/lib/proot-distro/containers/debian/rootfs/opt/popmark/ui/dist/index.js"` must print at least 1. Otherwise use the `F3`/`F5` keys from the Termux key strip. |
 | Very slow startup | proot has overhead. The first launch after a reboot is slowest; later ones reuse the page cache. |
 
 ## Building on the phone

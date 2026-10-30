@@ -57,6 +57,7 @@ export function ActionButton(props: {
   active?: boolean;
   disabled?: boolean;
   grow?: number;
+  height?: number;
   variant?: "solid" | "ghost";
 }) {
   const [hovered, setHovered] = createSignal(false);
@@ -82,7 +83,7 @@ export function ActionButton(props: {
   return (
     <box
       id={props.id}
-      height={1}
+      height={props.height ?? 1}
       flexGrow={props.grow ?? 0}
       flexShrink={0}
       paddingLeft={1}

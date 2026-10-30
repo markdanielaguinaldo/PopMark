@@ -173,6 +173,7 @@ export function Splash(props: {
             onPress={props.onClose}
             tone="accent"
             variant="ghost"
+            height={props.width < 60 ? 3 : 1}
           />
           <ActionButton
             id="focus-play"
@@ -180,6 +181,7 @@ export function Splash(props: {
             onPress={props.onTogglePlayback}
             tone="muted"
             variant="ghost"
+            height={props.width < 60 ? 3 : 1}
           />
           <ActionButton
             id="focus-theme"
@@ -187,6 +189,7 @@ export function Splash(props: {
             onPress={() => props.onCycleTheme(1)}
             tone="highlight"
             variant="ghost"
+            height={props.width < 60 ? 3 : 1}
           />
           <ActionButton
             id="focus-theme-back"
@@ -194,6 +197,7 @@ export function Splash(props: {
             onPress={() => props.onCycleTheme(-1)}
             tone="muted"
             variant="ghost"
+            height={props.width < 60 ? 3 : 1}
           />
         </box>
         <Show when={props.width >= 80} fallback={<box height={0} />}>

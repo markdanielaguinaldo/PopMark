@@ -145,9 +145,13 @@ without a keyboard:
 - **Tap or drag the progress bar** to seek, and the **volume slider** to set volume.
 - **Tap the footer buttons** on narrow screens: `HELP`, `TOOLS`, `FOCUS`, `LOGS`,
   `THEME`, and `QUIT`. The F-keys exist for hardware keyboards but are not needed.
+- **In Focus View**, tap `RETURN`, `PLAY`/`PAUSE`, `THEME`, or `◀` to leave, toggle
+  playback, or cycle the theme without touching the keyboard.
 
 The transport row (`PREV`, `PLAY`/`PAUSE`, `NEXT`, `STOP`, `SHUFFLE`) is always
-touchable.
+touchable. Below 60 columns the layout switches to a phone mode: the footer splits
+into two button rows, the transport and volume stack, and decorative rows are
+dropped so nothing is clipped.
 
 ### Optional: F-keys in the Termux keyboard
 

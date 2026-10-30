@@ -49,6 +49,7 @@ export function Panel(
 }
 
 export function ActionButton(props: {
+  id?: string;
   label: string;
   hint?: string;
   onPress: () => void;
@@ -80,6 +81,7 @@ export function ActionButton(props: {
 
   return (
     <box
+      id={props.id}
       height={1}
       flexGrow={props.grow ?? 0}
       flexShrink={0}

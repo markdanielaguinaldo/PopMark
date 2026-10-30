@@ -470,6 +470,7 @@ test("renders help and tools dialogs and the focus view", async () => {
   }
 
   const focusSeeks: Array<{ ratio: number; final: boolean }> = [];
+  const focusActions: string[] = [];
   const splash = await testRender(
     () => (
       <Splash
@@ -489,6 +490,9 @@ test("renders help and tools dialogs and the focus view", async () => {
         width={110}
         height={36}
         onSeek={(ratio, final) => focusSeeks.push({ ratio, final: final ?? true })}
+        onClose={() => focusActions.push("close")}
+        onTogglePlayback={() => focusActions.push("play")}
+        onCycleTheme={(direction) => focusActions.push(`theme${direction}`)}
       />
     ),
     { width: 110, height: 36 },
@@ -524,6 +528,83 @@ test("renders help and tools dialogs and the focus view", async () => {
     expect(lastSeek).toBeDefined();
     expect(lastSeek!.ratio).toBeGreaterThan(0.4);
     expect(lastSeek!.final).toBe(true);
+
+    const returnButton = splash.renderer.root.findDescendantById("focus-return");
+    const themeButton = splash.renderer.root.findDescendantById("focus-theme");
+    expect(returnButton).toBeDefined();
+    expect(themeButton).toBeDefined();
+
+    await splash.mockMouse.click(returnButton!.x + 1, returnButton!.y);
+    await splash.mockMouse.click(themeButton!.x + 1, themeButton!.y);
+    await splash.renderOnce();
+
+    expect(focusActions).toEqual(["close", "theme1"]);
+  } finally {
+    await splash.dispose();
+  }
+});
+
+test("fits a phone-sized terminal without dropping controls", async () => {
+  applyTheme("midnight", false);
+  const fake = fakeBackend();
+  const setup = await testRender(() => <App createClient={fake.factory} />, {
+    width: 46,
+    height: 24,
+  });
+
+  try {
+    await setup.renderOnce();
+    await setup.flush();
+
+    const frame = setup.captureCharFrame();
+    expect(frame).toContain("NOW PLAYING");
+    expect(frame).toContain("Test Track");
+    expect(frame).toContain("HELP");
+    expect(frame).toContain("THEME");
+    expect(frame).toContain("ONLINE");
+    // Dense mode hides the decorative tagline and keeps the volume control.
+    expect(frame).not.toContain("TERMINAL JUKEBOX");
+    expect(setup.renderer.root.findDescendantById("volume-bar")).toBeDefined();
+    expect(setup.renderer.root.findDescendantById("transport-row")).toBeDefined();
+  } finally {
+    await setup.dispose();
+  }
+});
+
+test("focus view exposes tap targets on a phone-sized terminal", async () => {
+  const actions: string[] = [];
+  const splash = await testRender(
+    () => (
+      <Splash
+        status="Stopped"
+        elapsed={0}
+        volume={50}
+        message=""
+        toolsReady={2}
+        toolsTotal={2}
+        width={46}
+        height={24}
+        onSeek={() => undefined}
+        onClose={() => actions.push("close")}
+        onTogglePlayback={() => actions.push("play")}
+        onCycleTheme={(direction) => actions.push(`theme${direction}`)}
+      />
+    ),
+    { width: 46, height: 24 },
+  );
+
+  try {
+    await splash.renderOnce();
+    const frame = splash.captureCharFrame();
+    expect(frame).toContain("RETURN");
+    expect(frame).toContain("THEME");
+    expect(frame).not.toContain("A TERMINAL JUKEBOX");
+
+    const back = splash.renderer.root.findDescendantById("focus-return");
+    expect(back).toBeDefined();
+    await splash.mockMouse.click(back!.x + 1, back!.y);
+    await splash.renderOnce();
+    expect(actions).toEqual(["close"]);
   } finally {
     await splash.dispose();
   }

@@ -84,6 +84,9 @@ export function App(props: {
   const dimensions = useTerminalDimensions();
   const narrow = () => dimensions().width < 100;
   const compact = () => dimensions().width < 88;
+  // Phone-sized terminals: Termux portrait is often ~45x24, so the regular
+  // layout clips its toolbar and transport row before `narrow` would help.
+  const dense = () => dimensions().width < 60;
   const short = () => dimensions().height < 30;
   const tiny = () => dimensions().height < 22;
 
@@ -838,10 +841,11 @@ export function App(props: {
         tools={store.tools}
         narrow={narrow}
         compact={compact}
+        dense={dense}
         onOpenTools={openTools}
       />
 
-      <box flexGrow={1} flexDirection="row" gap={1} padding={1} minHeight={0}>
+      <box flexGrow={1} flexDirection="row" gap={1} padding={dense() ? 0 : 1} minHeight={0}>
         <Show
           when={store.connection === "ready" || store.connection === "connecting"}
           fallback={<PanelShell>{errorPanel()}</PanelShell>}
@@ -850,6 +854,7 @@ export function App(props: {
             <NowPlaying
               compact={short()}
               tiny={tiny()}
+              dense={dense()}
               current={store.queue.current}
               status={store.playback.status}
               elapsed={displayElapsed()}
@@ -858,7 +863,7 @@ export function App(props: {
               message={store.playback.message}
               busy={store.playback.busy}
               busyLabel={store.playback.busyLabel}
-              columns={dimensions().width - (narrow() ? 6 : 39)}
+              columns={dimensions().width - (dense() ? 4 : narrow() ? 6 : 39)}
               onToggle={togglePlayback}
               onNext={nextTrack}
               onPrevious={previousTrack}
@@ -873,6 +878,7 @@ export function App(props: {
               selectedIndex={selectedIndex()}
               compact={short() || compact()}
               tiny={tiny()}
+              dense={dense()}
               onPlay={playIndex}
               onShuffle={shuffle}
               onClear={clearQueue}
@@ -896,6 +902,7 @@ export function App(props: {
       <Footer
         mode={mode}
         narrow={narrow()}
+        dense={dense()}
         connected={store.connection === "ready"}
         onSubmit={submit}
         onRef={onInputRef}
@@ -922,6 +929,9 @@ export function App(props: {
           width={dimensions().width}
           height={dimensions().height}
           onSeek={seekToRatio}
+          onClose={closeFocus}
+          onTogglePlayback={togglePlayback}
+          onCycleTheme={changeTheme}
         />
       </Show>
 

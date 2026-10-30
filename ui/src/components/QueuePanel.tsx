@@ -147,6 +147,7 @@ export function QueuePanel(props: {
   selectedIndex: number;
   compact?: boolean;
   tiny?: boolean;
+  dense?: boolean;
   onPlay: (index: number) => void;
   onShuffle: () => void;
   onClear: () => void;
@@ -154,6 +155,10 @@ export function QueuePanel(props: {
 }) {
   let scroll: ScrollBoxRenderable | undefined;
   const dimensions = useTerminalDimensions();
+
+  // On a phone the queue header costs a whole track row; drop it when the panel
+  // is too short for both. Shuffle and clear remain available as commands.
+  const hideHeader = () => props.tiny === true || (props.dense === true && dimensions().height < 24);
 
   createEffect(() => {
     dimensions();
@@ -178,7 +183,7 @@ export function QueuePanel(props: {
       padding={0}
       gap={props.tiny ? 0 : 1}
     >
-      <Show when={!props.tiny} fallback={<box height={0} />}>
+      <Show when={!hideHeader()} fallback={<box height={0} />}>
         <box
           flexDirection="row"
           alignItems="center"

@@ -42,6 +42,10 @@ Focus View is not a command input: typing ordinary characters there does nothing
 supports playback and navigation shortcuts, and its progress bar is draggable. A sparse
 starfield shimmers behind the content, with denser light toward the edges of the screen.
 
+Its controls are also mouse- and touch-friendly: `RETURN`, `PLAY`/`PAUSE`, `THEME`, and
+`◀` cycle the theme backwards. Below 60 columns the whole application switches to a
+phone layout, so those buttons remain reachable without an F-key row.
+
 ## Themes
 
 Press <kbd>F5</kbd> to cycle color schemes and <kbd>Shift</kbd>+<kbd>F5</kbd> to go

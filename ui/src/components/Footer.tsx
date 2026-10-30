@@ -9,6 +9,7 @@ export type InputMode = "command" | "navigation" | "focus" | "modal";
 export function Footer(props: {
   mode: () => InputMode;
   narrow: boolean;
+  dense: boolean;
   connected: boolean;
   onSubmit: (value: string) => void;
   onRef: (input: InputRenderable) => void;
@@ -60,9 +61,12 @@ export function Footer(props: {
   const modeForeground = () =>
     props.mode() === "navigation" ? theme.muted : theme.accentInk;
 
+  const onlineLabel = () => (props.connected ? "ONLINE" : "OFFLINE");
+  const onlineColor = () => (props.connected ? theme.accent : theme.danger);
+
   return (
     <box
-      height={3}
+      height={props.dense ? 4 : 3}
       flexShrink={0}
       flexDirection="column"
       border={["top"]}
@@ -133,56 +137,75 @@ export function Footer(props: {
         </box>
       </box>
 
-      <box flexDirection="row" gap={1} height={1} alignItems="center">
-        <Show
-          when={!props.narrow}
-          fallback={
-            // Termux and other touch terminals rarely have F-keys. Every view is
-            // reachable from these one-cell buttons instead.
-            <box flexDirection="row" gap={1} alignItems="center" flexShrink={0}>
-              <ActionButton label="HELP" onPress={props.onOpenHelp} variant="ghost" />
-              <ActionButton label="TOOLS" onPress={props.onOpenTools} variant="ghost" />
-              <ActionButton label="FOCUS" onPress={props.onOpenFocus} variant="ghost" />
-              <ActionButton label="LOGS" onPress={props.onOpenLogs} variant="ghost" />
-              <ActionButton
-                label="THEME"
-                onPress={props.onCycleTheme}
-                tone="highlight"
-                variant="ghost"
-              />
-              <ActionButton label="QUIT" onPress={props.onQuit} tone="danger" variant="ghost" />
-            </box>
-          }
-        >
-          <text selectable={false} wrapMode="none">
-            <Tint color={theme.accent}>[F1]</Tint>
-            <Tint color={theme.muted}> help </Tint>
-            <Tint color={theme.accent}>[F2]</Tint>
-            <Tint color={theme.muted}> tools </Tint>
-            <Tint color={theme.accent}>[F3]</Tint>
-            <Tint color={theme.muted}> focus </Tint>
-            <Tint color={theme.accent}>[F4]</Tint>
-            <Tint color={theme.muted}> logs </Tint>
-            <Tint color={theme.accent}>[F5]</Tint>
-            <Tint color={theme.muted}> theme </Tint>
-            <Tint color={theme.faint}> · </Tint>
-            <Tint color={theme.accent}>[ctrl+q]</Tint>
-            <Tint color={theme.muted}> quit</Tint>
+      <Show
+        when={props.dense}
+        fallback={
+          <box flexDirection="row" gap={1} height={1} alignItems="center">
+            <Show
+              when={!props.narrow}
+              fallback={
+                // Termux and other touch terminals rarely have F-keys. Every view is
+                // reachable from these one-cell buttons instead.
+                <box flexDirection="row" gap={1} alignItems="center" flexShrink={0}>
+                  <ActionButton label="HELP" onPress={props.onOpenHelp} variant="ghost" />
+                  <ActionButton label="TOOLS" onPress={props.onOpenTools} variant="ghost" />
+                  <ActionButton label="FOCUS" onPress={props.onOpenFocus} variant="ghost" />
+                  <ActionButton label="LOGS" onPress={props.onOpenLogs} variant="ghost" />
+                  <ActionButton
+                    label="THEME"
+                    onPress={props.onCycleTheme}
+                    tone="highlight"
+                    variant="ghost"
+                  />
+                  <ActionButton label="QUIT" onPress={props.onQuit} tone="danger" variant="ghost" />
+                </box>
+              }
+            >
+              <text selectable={false} wrapMode="none">
+                <Tint color={theme.accent}>[F1]</Tint>
+                <Tint color={theme.muted}> help </Tint>
+                <Tint color={theme.accent}>[F2]</Tint>
+                <Tint color={theme.muted}> tools </Tint>
+                <Tint color={theme.accent}>[F3]</Tint>
+                <Tint color={theme.muted}> focus </Tint>
+                <Tint color={theme.accent}>[F4]</Tint>
+                <Tint color={theme.muted}> logs </Tint>
+                <Tint color={theme.accent}>[F5]</Tint>
+                <Tint color={theme.muted}> theme </Tint>
+                <Tint color={theme.faint}> · </Tint>
+                <Tint color={theme.accent}>[ctrl+q]</Tint>
+                <Tint color={theme.muted}> quit</Tint>
+              </text>
+            </Show>
+            <box flexGrow={1} />
+            <text fg={onlineColor()} selectable={false} wrapMode="none">
+              {props.narrow ? onlineLabel() : props.connected ? "● backend connected" : "○ backend offline"}
+            </text>
+          </box>
+        }
+      >
+        {/* Phone layout: two rows of tap targets, because six buttons plus the
+            connection label do not fit beside each other below ~60 columns. */}
+        <box flexDirection="row" gap={1} height={1} alignItems="center" flexShrink={0}>
+          <ActionButton label="HELP" onPress={props.onOpenHelp} variant="ghost" />
+          <ActionButton label="TOOLS" onPress={props.onOpenTools} variant="ghost" />
+          <ActionButton label="FOCUS" onPress={props.onOpenFocus} variant="ghost" />
+          <ActionButton label="LOGS" onPress={props.onOpenLogs} variant="ghost" />
+        </box>
+        <box flexDirection="row" gap={1} height={1} alignItems="center" flexShrink={0}>
+          <ActionButton
+            label="THEME"
+            onPress={props.onCycleTheme}
+            tone="highlight"
+            variant="ghost"
+          />
+          <ActionButton label="QUIT" onPress={props.onQuit} tone="danger" variant="ghost" />
+          <box flexGrow={1} />
+          <text fg={onlineColor()} selectable={false} wrapMode="none">
+            {onlineLabel()}
           </text>
-        </Show>
-        <box flexGrow={1} />
-        <text selectable={false} wrapMode="none">
-          <Tint color={props.connected ? theme.accent : theme.danger}>
-            {props.connected
-              ? props.narrow
-                ? "ONLINE"
-                : "● backend connected"
-              : props.narrow
-                ? "OFFLINE"
-                : "○ backend offline"}
-          </Tint>
-        </text>
-      </box>
+        </box>
+      </Show>
     </box>
   );
 }

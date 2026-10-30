@@ -14,6 +14,7 @@ export function Header(props: {
   tools: ToolInfo[];
   narrow: () => boolean;
   compact: () => boolean;
+  dense: () => boolean;
   onOpenTools: () => void;
 }) {
   const [now, setNow] = createSignal(new Date());
@@ -58,10 +59,12 @@ export function Header(props: {
             POPMARK
           </text>
         </box>
-        <text selectable={false} wrapMode="none">
-          <Tint color={theme.faint}>// </Tint>
-          <Tint color={theme.muted}>TERMINAL JUKEBOX</Tint>
-        </text>
+        <Show when={!props.dense()} fallback={<box height={0} />}>
+          <text selectable={false} wrapMode="none">
+            <Tint color={theme.faint}>// </Tint>
+            <Tint color={theme.muted}>TERMINAL JUKEBOX</Tint>
+          </text>
+        </Show>
         <Show when={!props.compact()} fallback={<box height={0} />}>
           <text fg={theme.faint} selectable={false} wrapMode="none">
             ·

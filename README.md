@@ -162,9 +162,9 @@ dotnet run --project .\PopMark\PopMark.csproj -- --legacy-ui
 - **Drag-to-seek and drag-to-volume** - press and hold either slider, then slide.
 - **Compact transport** - previous, play/pause, next, stop, and shuffle share one row with
   the volume slider; no keyboard legends crowd the buttons.
-- **Phone-friendly layout** - narrow terminals get a touch toolbar for every view, and
-  the transport, sliders, and queue rows are all tap targets. See
-  [Android / Termux](docs/termux.md).
+- **Phone-friendly layout** - narrow terminals switch to a compact layout: a two-row
+  touch toolbar, stacked transport and volume, and a Focus View with tappable
+  `RETURN`/`THEME` controls. See [Android / Termux](docs/termux.md).
 - **YouTube queue** — add videos, playlists, or a search result from the terminal.
 - **No downloads** — audio is streamed through `mpv`; PopMark keeps a queue, not a music
   library.

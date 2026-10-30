@@ -51,10 +51,16 @@ if [ -z "$TARBALL" ]; then
     done
 fi
 
-if [ -z "$TARBALL" ] || [ ! -f "$TARBALL" ]; then
-    die "No PopMark .tar.gz found (looked in:${SEARCHED:- nowhere}).\n\
+if [ -n "$TARBALL" ] && [ ! -f "$TARBALL" ]; then
+    die "No such file: $TARBALL\n\
+Check the exact name:\n\
+  ls -l ~/storage/downloads/*.tar.gz"
+fi
+
+if [ -z "$TARBALL" ]; then
+    die "No PopMark .tar.gz found (searched:${SEARCHED:- nothing}).\n\
 Pass the path yourself, for example:\n\
-  bash ~/PopMark/scripts/termux-install.sh ~/storage/downloads/PopMark-*-linux-arm64-portable.tar.gz\n\
+  bash ~/PopMark/scripts/termux-install.sh ~/storage/downloads/PopMark-*.tar.gz\n\
 Or locate a copy anywhere on the device:\n\
   find -H /sdcard -iname 'PopMark-*.tar.gz' 2>/dev/null"
 fi

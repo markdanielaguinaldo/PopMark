@@ -48,6 +48,13 @@ internal static class Program
             return 0;
         }
 
+        using var instanceLock = InstanceLock.TryAcquire(out var instanceLockPath);
+        if (instanceLock is null)
+        {
+            ConsoleHelper.Error($"PopMark is already running. Close the other window first. Lock: {instanceLockPath}");
+            return 2;
+        }
+
         var ytDlp = new YtDlpService();
         var mpv = new MpvPlayer();
         var player = new PlaybackQueue(ytDlp, mpv);
@@ -322,6 +329,13 @@ internal static class Program
 
         Console.SetOut(Console.Error);
 
+        using var instanceLock = InstanceLock.TryAcquire(out var instanceLockPath);
+        if (instanceLock is null)
+        {
+            Console.Error.WriteLine($"[bridge] PopMark is already running. Lock: {instanceLockPath}");
+            return 2;
+        }
+
         var ytDlp = new YtDlpService();
         var mpv = new MpvPlayer();
         var player = new PlaybackQueue(ytDlp, mpv);
@@ -342,6 +356,7 @@ internal static class Program
             }
 
             var session = new BridgeSession(player, dependencies, stdout, AppVersion());
+            using var parentWatchdog = ParentWatchdog.Start(session.RequestShutdown);
             return await session.RunAsync();
         }
         catch (Exception ex)

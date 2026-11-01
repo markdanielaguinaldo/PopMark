@@ -37,6 +37,44 @@ describe("parseBackendMessage", () => {
     expect(parseBackendMessage("null")).toBeNull();
   });
 
+  test("rejects known message types with the wrong shape", () => {
+    expect(
+      parseBackendMessage(
+        JSON.stringify({
+          type: "state",
+          revision: "three",
+          status: "Playing",
+          elapsedSeconds: 1,
+          volumePercent: 50,
+          message: "x",
+          busy: false,
+        }),
+      ),
+    ).toBeNull();
+
+    expect(
+      parseBackendMessage(
+        JSON.stringify({
+          type: "queue",
+          revision: 1,
+          currentIndex: 0,
+          previous: [],
+          pending: [{ title: "Track", url: 7, displaySource: "YouTube" }],
+        }),
+      ),
+    ).toBeNull();
+
+    expect(parseBackendMessage(JSON.stringify({ type: "ack", ok: "yes" }))).toBeNull();
+  });
+
+  test("drops unknown fields and keeps ack ids", () => {
+    const ack = parseBackendMessage(
+      JSON.stringify({ type: "ack", id: "req-1", ok: true, extra: "ignored" }),
+    );
+
+    expect(ack).toEqual({ type: "ack", id: "req-1", ok: true });
+  });
+
   test("parses diagnostic log messages", () => {
     const log = parseBackendMessage(
       JSON.stringify({

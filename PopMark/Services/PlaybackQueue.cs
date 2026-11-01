@@ -1,3 +1,4 @@
+using PopMark.Helpers;
 using PopMark.Models;
 
 namespace PopMark.Services;
@@ -34,6 +35,7 @@ public sealed class PlaybackQueue
 
     public async Task AddUrlAsync(string url, CancellationToken cancellationToken = default)
     {
+        url = TargetInput.Normalize(url);
         SetStatus(PlaybackStatus.Loading);
 
         IReadOnlyList<Track> tracks;

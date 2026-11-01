@@ -104,6 +104,8 @@ internal sealed class BridgeSession
         _requests.Writer.TryComplete();
     }
 
+    private const int MaxRequestLength = 256 * 1024;
+
     private async Task ReadStandardInputAsync()
     {
         // Do not use Console.In here: when the bridge is spawned from a process
@@ -119,19 +121,33 @@ internal sealed class BridgeSession
 
         try
         {
+            var lineReader = new BoundedLineReader(input, MaxRequestLength);
+
             while (!_shutdown.IsCancellationRequested)
             {
-                var line = await input.ReadLineAsync(_shutdown.Token).ConfigureAwait(false);
-                if (line is null)
-                    break;
+                var result = await lineReader
+                    .ReadLineAsync(_shutdown.Token)
+                    .ConfigureAwait(false);
 
-                if (!BridgeRequest.TryParse(line, out var request, out var error))
+                if (result.TooLong)
                 {
-                    Write(BridgeErrorDto.Create(null, error ?? "Invalid bridge request."));
+                    Write(BridgeErrorDto.Create(null, "Bridge request exceeded the size limit."));
+                    if (result.EndOfStream)
+                        break;
+
                     continue;
                 }
 
-                _requests.Writer.TryWrite(request!);
+                if (result.Line is { } line)
+                {
+                    if (!BridgeRequest.TryParse(line, out var request, out var error))
+                        Write(BridgeErrorDto.Create(null, error ?? "Invalid bridge request."));
+                    else
+                        _requests.Writer.TryWrite(request!);
+                }
+
+                if (result.EndOfStream)
+                    break;
             }
         }
         catch (OperationCanceledException)

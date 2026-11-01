@@ -4,6 +4,7 @@ using Xunit;
 
 namespace PopMark.Tests;
 
+[Collection("StateDirectory")]
 public sealed class PlatformPathTests
 {
     [Fact]

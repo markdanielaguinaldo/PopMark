@@ -29,6 +29,22 @@ snapshots it receives from the bridge and sends intent back.
 - Bun is available, and
 - `ui/src/index.tsx` (development) or `ui/dist/index.js` (bundled) can be found.
 
+### Process lifetime
+
+mpv is never allowed to outlive the bridge. Four things enforce that:
+
+- `MpvPlayer` puts mpv in a Windows Job Object with `KILL_ON_JOB_CLOSE`.
+- `OpenTuiLauncher` puts Bun in the same kind of job, so the whole UI tree follows
+  the launcher down.
+- The frontend passes its PID as `POPMARK_UI_PID`; `ParentWatchdog` shuts the bridge
+  down when that process disappears.
+- Closing stdin still ends the bridge, and the bridge always calls
+  `StopPlaybackAndKeepQueueAsync` before it exits.
+
+On Linux the job objects are unavailable, so the watchdog and stdin path do the work.
+A stale `sessions.json` is still cleaned on the next start, but only when the stored
+PID and process start time both match.
+
 Use `--legacy-ui` only to inspect the retired C# renderer, or run `PopMark --bridge`
 yourself when
 working on the protocol. Environment overrides:
@@ -63,6 +79,10 @@ PopMark keeps runtime state outside the repository:
 `POPMARK_HOME` overrides both and is read by the backend and the frontend, so pointing
 it at a scratch folder is the cleanest way to test queue restore or theme persistence
 without touching your real setup. The C# side lives in `Helpers/PopMarkState.cs`.
+
+State files carry a `schemaVersion`. Writes go through a temp file and rename, the
+previous copy stays beside it as `.bak`, and a corrupt primary is ignored in favour of
+the backup. `popmark.lock` keeps two instances from writing the same folder.
 
 
 ## Build and run

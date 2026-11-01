@@ -67,6 +67,7 @@ public sealed class YtDlpService
         startInfo.ArgumentList.Add("--flat-playlist");
         startInfo.ArgumentList.Add("--ignore-errors");
         startInfo.ArgumentList.Add("--no-warnings");
+        startInfo.ArgumentList.Add("--");
         startInfo.ArgumentList.Add(url);
 
         try

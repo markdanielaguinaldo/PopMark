@@ -1,6 +1,6 @@
 import { createSignal } from "solid-js";
 import { createMutable } from "solid-js/store";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
@@ -263,11 +263,24 @@ function loadThemeId(): ThemeId {
 function saveThemeId(id: ThemeId) {
   if (process.env.NODE_ENV === "test") return;
 
+  const path = themeStatePath();
+  const temp = `${path}.tmp-${process.pid}`;
+
   try {
-    const path = themeStatePath();
     mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, JSON.stringify({ theme: id }), "utf8");
+    writeFileSync(temp, JSON.stringify({ schemaVersion: 1, theme: id }), "utf8");
+    if (existsSync(path)) {
+      try {
+        copyFileSync(path, `${path}.bak`);
+      } catch {
+      }
+    }
+    renameSync(temp, path);
   } catch {
+    try {
+      rmSync(temp, { force: true });
+    } catch {
+    }
   }
 }
 

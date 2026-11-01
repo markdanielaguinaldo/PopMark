@@ -1,4 +1,5 @@
-﻿using PopMark.Models;
+﻿using PopMark.Helpers;
+using PopMark.Models;
 using System.Diagnostics;
 using System.IO.Pipes;
 using System.Net.Sockets;
@@ -12,6 +13,7 @@ public sealed class MpvPlayer
 {
     private readonly object _syncRoot = new();
     private Process? _process;
+    private ProcessJob? _processJob;
     private string? _ipcName;
     private string? _ipcServerPath;
     private int? _registeredProcessId;
@@ -93,12 +95,17 @@ public sealed class MpvPlayer
             startInfo.Environment["PATH"] = BuildChildPath(Path.GetDirectoryName(ytDlpPath));
         }
 
+        startInfo.ArgumentList.Add("--");
         startInfo.ArgumentList.Add(track.Url);
 
         try
         {
             var process = Process.Start(startInfo)
                 ?? throw new InvalidOperationException("Unable to start mpv.");
+
+            // Windows only: if this process dies without running StopAsync, the
+            // job handle closes and mpv goes with it.
+            var processJob = ProcessJob.TryCreateFor(process);
 
             process.StandardInput.Close();
 
@@ -109,6 +116,7 @@ public sealed class MpvPlayer
             {
                 _stopRequested = false;
                 _process = process;
+                _processJob = processJob;
                 _registeredProcessId = process.Id;
                 _startedAt = DateTimeOffset.UtcNow;
                 LastError = null;
@@ -208,16 +216,20 @@ public sealed class MpvPlayer
     public async Task StopAsync(CancellationToken cancellationToken = default)
     {
         Process? process;
+        ProcessJob? processJob;
         int? registeredProcessId;
         lock (_syncRoot)
         {
             _stopRequested = true;
             process = _process;
+            processJob = _processJob;
+            _processJob = null;
             registeredProcessId = _registeredProcessId;
         }
 
         if (process is null || process.HasExited)
         {
+            processJob?.Dispose();
             if (registeredProcessId.HasValue)
                 PlaybackSessionStore.Unregister(registeredProcessId.Value);
             return;
@@ -238,6 +250,10 @@ public sealed class MpvPlayer
             catch
             {
             }
+        }
+        finally
+        {
+            processJob?.Dispose();
         }
 
         if (registeredProcessId.HasValue)
@@ -446,12 +462,15 @@ public sealed class MpvPlayer
     {
         var shouldNotify = false;
         Task? errorTask;
+        ProcessJob? processJob;
         lock (_syncRoot)
         {
             if (!ReferenceEquals(_process, exitedProcess))
                 return;
 
             errorTask = _errorTask;
+            processJob = _processJob;
+            _processJob = null;
 
             shouldNotify = !_stopRequested;
             LastRunFailedImmediately = shouldNotify &&
@@ -461,6 +480,8 @@ public sealed class MpvPlayer
             _ipcServerPath = null;
             _registeredProcessId = null;
         }
+
+        processJob?.Dispose();
 
         // Give the stderr reader a moment so LastError is populated before anyone reads it.
         if (errorTask is not null)

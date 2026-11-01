@@ -141,6 +141,7 @@ export function spawnBackend(launch: BackendLaunch): BackendProcess {
       ...process.env,
       DOTNET_NOLOGO: "1",
       DOTNET_CLI_TELEMETRY_OPTOUT: "1",
+      POPMARK_UI_PID: String(process.pid),
     },
   }) as BackendProcess;
 }

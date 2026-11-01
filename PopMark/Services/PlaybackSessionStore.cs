@@ -8,6 +8,8 @@ namespace PopMark.Services;
 
 public static class PlaybackSessionStore
 {
+    private const int CurrentSchemaVersion = 1;
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true
@@ -24,9 +26,12 @@ public static class PlaybackSessionStore
 
         foreach (var session in sessions)
         {
+            if (!IsSameProcess(session))
+                continue;
+
             try
             {
-                var process = Process.GetProcessById(session.ProcessId);
+                using var process = Process.GetProcessById(session.ProcessId);
                 if (process.HasExited)
                     continue;
 
@@ -44,6 +49,7 @@ public static class PlaybackSessionStore
 
     public static void Register(int processId, string ipcServerPath, Track track)
     {
+        var startedAtTicks = ProcessStartedAtTicks(processId);
         var sessions = LoadSessions()
             .Where(session => session.ProcessId != processId)
             .ToList();
@@ -52,7 +58,8 @@ public static class PlaybackSessionStore
             processId,
             ipcServerPath,
             track.Title,
-            DateTimeOffset.UtcNow));
+            DateTimeOffset.UtcNow,
+            startedAtTicks));
 
         SaveSessions(sessions);
     }
@@ -66,19 +73,79 @@ public static class PlaybackSessionStore
         SaveSessions(sessions);
     }
 
-    private static List<PlaybackSession> LoadSessions()
+    private static bool IsSameProcess(PlaybackSession session)
     {
+        // Sessions written before start times were recorded cannot be verified,
+        // so leave them alone rather than risk killing a recycled PID.
+        if (session.ProcessStartedAtUtcTicks <= 0)
+            return false;
+
         try
         {
-            if (!File.Exists(SessionFilePath))
-                return new List<PlaybackSession>();
+            using var process = Process.GetProcessById(session.ProcessId);
+            if (process.HasExited)
+                return false;
 
-            var json = File.ReadAllText(SessionFilePath);
-            return JsonSerializer.Deserialize<List<PlaybackSession>>(json) ?? new List<PlaybackSession>();
+            var actual = process.StartTime.ToUniversalTime().Ticks;
+            return Math.Abs(actual - session.ProcessStartedAtUtcTicks) <= TimeSpan.FromSeconds(2).Ticks;
         }
         catch
         {
-            return new List<PlaybackSession>();
+            return false;
+        }
+    }
+
+    private static long ProcessStartedAtTicks(int processId)
+    {
+        try
+        {
+            using var process = Process.GetProcessById(processId);
+            return process.StartTime.ToUniversalTime().Ticks;
+        }
+        catch
+        {
+            return DateTimeOffset.UtcNow.UtcDateTime.Ticks;
+        }
+    }
+
+    private static List<PlaybackSession> LoadSessions()
+    {
+        var json = AtomicFile.ReadAllText(SessionFilePath);
+        var sessions = ParseSessions(json);
+        if (sessions is not null)
+            return sessions;
+
+        var backup = AtomicFile.ReadBackup(SessionFilePath);
+        return ParseSessions(backup) ?? new List<PlaybackSession>();
+    }
+
+    private static List<PlaybackSession>? ParseSessions(string? json)
+    {
+        if (json is null)
+            return null;
+
+        try
+        {
+            var file = JsonSerializer.Deserialize<SessionFile>(json, JsonOptions);
+            if (file is not null)
+            {
+                return file.SchemaVersion > CurrentSchemaVersion
+                    ? new List<PlaybackSession>()
+                    : file.Sessions ?? new List<PlaybackSession>();
+            }
+        }
+        catch (JsonException)
+        {
+        }
+
+        try
+        {
+            // Older builds wrote a bare array.
+            return JsonSerializer.Deserialize<List<PlaybackSession>>(json, JsonOptions);
+        }
+        catch
+        {
+            return null;
         }
     }
 
@@ -87,7 +154,8 @@ public static class PlaybackSessionStore
         try
         {
             Directory.CreateDirectory(StateDirectory);
-            File.WriteAllText(SessionFilePath, JsonSerializer.Serialize(sessions, JsonOptions));
+            var file = new SessionFile(CurrentSchemaVersion, sessions.ToList());
+            AtomicFile.WriteAllText(SessionFilePath, JsonSerializer.Serialize(file, JsonOptions));
         }
         catch
         {
@@ -225,5 +293,10 @@ public static class PlaybackSessionStore
         int ProcessId,
         string IpcServerPath,
         string Title,
-        DateTimeOffset StartedAtUtc);
+        DateTimeOffset StartedAtUtc,
+        long ProcessStartedAtUtcTicks);
+
+    private sealed record SessionFile(
+        int SchemaVersion,
+        List<PlaybackSession>? Sessions);
 }

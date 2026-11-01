@@ -89,6 +89,8 @@ internal static class OpenTuiLauncher
             if (process is null)
                 return false;
 
+            using var processJob = ProcessJob.TryCreateFor(process);
+
             process.ErrorDataReceived += (_, args) =>
             {
                 if (args.Data is null)

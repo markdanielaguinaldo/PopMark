@@ -37,13 +37,13 @@ foreach ($build in $builds) {
     $content = @"
 @echo off
 setlocal
-set "POPMARK_HOME=$target"
-if not exist "%POPMARK_HOME%\PopMark.exe" (
-  echo PopMark $($build.Label) build not found at "%POPMARK_HOME%". 1>&2
+set "POPMARK_APP=$target"
+if not exist "%POPMARK_APP%\PopMark.exe" (
+  echo PopMark $($build.Label) build not found at "%POPMARK_APP%". 1>&2
   exit /b 1
 )
-pushd "%POPMARK_HOME%" >nul
-"%POPMARK_HOME%\PopMark.exe" %*
+pushd "%POPMARK_APP%" >nul
+"%POPMARK_APP%\PopMark.exe" %*
 set "POPMARK_EXIT=%ERRORLEVEL%"
 popd >nul
 exit /b %POPMARK_EXIT%

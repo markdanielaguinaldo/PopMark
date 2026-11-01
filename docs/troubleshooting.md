@@ -110,8 +110,7 @@ causes:
 - Confirm another `mpv` or browser tab is not holding an exclusive audio device.
 - On Linux, `mpv` uses whatever audio output it autodetects. If it picks a silent or
   nonexistent device, set `POPMARK_MPV_AO` (`pulse`, `alsa`, `pipewire`, `null`, ...) to
-  force one. On Android/Termux this is set for you — see
-  [Android / Termux](termux.md#audio).
+  force one. On Android/Termux this is set for you.
 - `mpv` runs with video disabled. That is expected, not a broken install.
 
 ## The queue was not restored
@@ -160,8 +159,7 @@ launch.
 
 Mouse reporting depends on the terminal. Confirm the terminal forwards mouse events, and
 that the app is not running under a multiplexer that swallows them. Keyboard controls
-always work. On a phone, tap and drag are delivered as mouse events by Termux; if taps
-are ignored, see the [Termux guide](termux.md).
+always work. On a phone, tap and drag are delivered as mouse events by Termux.
 
 ## `play-test` exit codes
 
@@ -200,5 +198,5 @@ The default test length is 15 seconds; `--seconds N` accepts 1 to 3600. Add
   a track starts.
 - There is no per-track retry command. Re-add the URL, or use `play-test` to diagnose it.
 - Released builds are Windows x64. Linux/macOS run from source, and Android uses the
-  cross-built `linux-arm64` archive described in [Android / Termux](termux.md).
+  cross-built `linux-arm64` archive.
 - Released builds are Windows x64 only.

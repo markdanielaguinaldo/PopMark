@@ -55,37 +55,6 @@ you do not need .NET or Bun installed.
 You still need `yt-dlp` and `mpv`; PopMark can install both into
 `%LOCALAPPDATA%\PopMark\tools` without administrator rights.
 
-### Android (Termux)
-
-Phones can run the full interface inside Termux using a Debian proot distro,
-because .NET and Bun need glibc rather than Android's Bionic libc. Build the ARM64
-package on a desktop:
-
-```powershell
-.\scripts\build-linux.ps1 -Runtime linux-arm64
-```
-
-Copy the archive to the phone and get `scripts/termux-install.sh` there (clone the
-repo, or copy that one file). The installer can also download the release asset
-itself, so from Termux you can skip the copy entirely:
-
-```bash
-bash scripts/termux-install.sh \
-  https://github.com/markdanielaguinaldo/PopMark/releases/download/termux-1.1.2/PopMark-1.1.2-OpenTUI-linux-arm64-portable.tar.gz
-```
-
-Otherwise, in Termux:
-
-```bash
-pkg install -y proot-distro pulseaudio
-bash scripts/termux-install.sh ~/storage/downloads/PopMark-1.1.2-OpenTUI-linux-arm64-portable.tar.gz
-popmark
-```
-
-Touch works: tap the prompt to type, tap rows and sliders, and use the
-HELP/TOOLS/FOCUS/LOGS/THEME/QUIT buttons in the footer. See
-[Android / Termux](docs/termux.md) for audio setup, wake locks, and troubleshooting.
-
 ### Build from source
 
 Requirements are installed automatically by the bootstrap on a fresh Windows x64 machine.
@@ -164,7 +133,7 @@ dotnet run --project .\PopMark\PopMark.csproj -- --legacy-ui
   the volume slider; no keyboard legends crowd the buttons.
 - **Phone-friendly layout** - narrow terminals switch to a compact layout: a two-row
   touch toolbar, stacked transport and volume, and a Focus View with tappable
-  `RETURN`/`THEME` controls. See [Android / Termux](docs/termux.md).
+  `RETURN`/`THEME` controls.
 - **YouTube queue** — add videos, playlists, or a search result from the terminal.
 - **No downloads** — audio is streamed through `mpv`; PopMark keeps a queue, not a music
   library.
@@ -264,9 +233,9 @@ The archives land in `releases/` and are not committed to Git.
 
 ## Local state
 
-Everything PopMark remembers lives under `%LOCALAPPDATA%\PopMark` on Windows, and
-under `$XDG_DATA_HOME/PopMark` (usually `~/.local/share/PopMark`) on Linux and
-Android. Set `POPMARK_HOME` to use a different folder.
+Everything PopMark remembers lives under `%LOCALAPPDATA%\PopMark` on Windows and under
+`$XDG_DATA_HOME/PopMark` (usually `~/.local/share/PopMark`) on Linux. Set `POPMARK_HOME`
+to use a different folder.
 
 | File | Contents |
 | --- | --- |
@@ -322,7 +291,6 @@ Remove-Item Env:POPMARK_MPV_INTEGRATION
 | Guide | Contents |
 | --- | --- |
 | [Installation](docs/installation.md) | Requirements, released build, building from source, first run, upgrades |
-| [Android / Termux](docs/termux.md) | Running PopMark on a phone with Termux, proot, and PulseAudio |
 | [Configuration](docs/configuration.md) | Tool discovery, pinned paths, environment variables, state files, volume |
 | [User Guide](docs/user-guide.md) | Adding music, views, commands, keyboard and mouse controls, queue restore |
 | [Troubleshooting](docs/troubleshooting.md) | Missing tools, 403 errors, failed playback, stale sessions, exit codes |

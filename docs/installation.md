@@ -7,7 +7,7 @@ PopMark has no installer, no service, and no admin-only steps.
 - **Windows x64** for the released build. The portable zip includes the .NET backend,
   Bun, and the compiled OpenTUI assets, so neither .NET nor Bun needs to be installed.
 - **Linux (x64 or arm64)** from a portable `build-linux` package, including Android
-  through Termux + proot-distro. See [Android / Termux](termux.md).
+  through Termux + proot-distro.
 - **Network access to YouTube** for playback, and to `github.com` / `api.github.com` when
   PopMark installs a tool.
 - **.NET 9 SDK and Bun 1.3.14+** only if you build from source.
@@ -74,7 +74,7 @@ For Linux, including an ARM64 phone:
 
 On Linux itself use `./scripts/build-linux.sh 1.1.2 linux-arm64`. The resulting
 `releases/*.tar.gz` is self-contained; `mpv` still comes from the system package
-manager. See [Android / Termux](termux.md) for the phone walkthrough.
+manager.
 
 An archive built on Windows does not carry Unix permission bits. On a Linux desktop,
 mark the three executables before the first run:

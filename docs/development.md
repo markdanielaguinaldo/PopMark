@@ -104,8 +104,7 @@ To produce a redistributable Linux package (bundled Bun, OpenTUI native library,
 ./scripts/build-linux.sh 1.1.2 linux-arm64       # from Linux / proot
 ```
 
-`linux-arm64` is the Android/Termux target; see
-[Android / Termux](termux.md) for the device-side steps. The publish enables
+`linux-arm64` is the Android/Termux target. The publish enables
 `InvariantGlobalization` so the backend does not need ICU inside a bare proot distro.
 
 `bun run start` runs the source with `--conditions=browser`. This is required so
@@ -126,6 +125,18 @@ for the backend. On Linux and Android the apphost `PopMark` is used directly; th
 `dotnet` host is only preferred when a `.dll` is available.
 
 If no backend is found, the UI shows the build command instead of failing silently.
+
+## Commit messages
+
+Subjects follow the `[PopMark] brief summary` form. The rule lives in `.githooks/commit-msg`,
+which also accepts `Merge `, `Revert `, `fixup!`, `squash!`, and `amend!` subjects. Git
+does not load hooks from the working tree by itself, so enable them once per clone:
+
+```powershell
+git config core.hooksPath .githooks
+```
+
+Use `git commit --no-verify` to skip the check for a one-off commit.
 
 ## Frontend layout
 

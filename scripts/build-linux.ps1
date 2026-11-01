@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "1.1.2",
+    [string]$Version = "1.2.0",
     [ValidateSet("linux-arm64", "linux-x64")]
     [string]$Runtime = "linux-arm64",
     [switch]$SkipBun,

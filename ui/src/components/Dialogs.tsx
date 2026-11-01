@@ -1,8 +1,10 @@
 import { TextAttributes } from "@opentui/core";
 import type { JSX } from "@opentui/solid";
-import { For, Show } from "solid-js";
-import type { ToolInfo } from "../bridge/protocol";
-import { basename, singleLine } from "../lib/format";
+import { For, Show, createSignal } from "solid-js";
+import type { ToolInfo, Track } from "../bridge/protocol";
+import { basename, formatTime, singleLine } from "../lib/format";
+import type { LibraryEntry } from "../lib/library";
+import { savedDate } from "../lib/library";
 import type { LogEntry } from "../lib/logs";
 import { theme } from "../theme";
 import { ActionButton, Spinner, Tint } from "./Widgets";
@@ -81,13 +83,38 @@ export function HelpDialog(props: { onClose: () => void; narrow: boolean }) {
             <text fg={theme.accent} attributes={TextAttributes.BOLD} selectable={false}>
               PLAYBACK
             </text>
-            <Command name="add" args="<url | search>" description="queue a video, playlist, or search" />
+            <Command name="add" args="<url | search>" description="queue a video, playlist, or pick from search results" />
+            <Command name="search" args="<query>" description="show the top matches before queueing" />
             <Command name="play / pause" description="toggle the current track" />
             <Command name="next / previous" description="move through the queue" />
             <Command name="goto" args="<# | title>" description="focus a row" />
             <Command name="shuffle" description="reshuffle upcoming tracks" />
+            <Command name="undo" description="undo the last queue change" />
             <Command name="stop" description="stop and clear the queue" />
             <Command name="clear playlist" description="stop but keep the window open" />
+          </box>
+
+          <box flexDirection="column">
+            <text fg={theme.info} attributes={TextAttributes.BOLD} selectable={false}>
+              LIBRARY
+            </text>
+            <Line>
+              <Tint color={theme.accent}>library</Tint>
+              <Tint color={theme.dim}> saved queues  ·  </Tint>
+              <Tint color={theme.accent}>save</Tint>
+              <Tint color={theme.dim}> &lt;name&gt;  ·  </Tint>
+              <Tint color={theme.accent}>load</Tint>
+              <Tint color={theme.dim}> &lt;name&gt;</Tint>
+            </Line>
+            <Line>
+              <Tint color={theme.accent}>delete-queue</Tint>
+              <Tint color={theme.dim}> &lt;name&gt;  ·  </Tint>
+              <Tint color={theme.accent}>export</Tint>
+              <Tint color={theme.dim}> [file.m3u]  ·  </Tint>
+              <Tint color={theme.accent}>import</Tint>
+              <Tint color={theme.dim}> &lt;file.m3u&gt;  ·  </Tint>
+              <Tint color={theme.accent}>favorite</Tint>
+            </Line>
           </box>
 
           <box flexDirection="column">
@@ -135,8 +162,22 @@ export function HelpDialog(props: { onClose: () => void; narrow: boolean }) {
               <Tint color={theme.dim}> diagnostics  </Tint>
               <Tint color={theme.accent}>F5</Tint>
               <Tint color={theme.dim}> theme  </Tint>
-              <Tint color={theme.accent}>shift+F5</Tint>
-              <Tint color={theme.dim}> previous theme</Tint>
+              <Tint color={theme.accent}>F6</Tint>
+              <Tint color={theme.dim}> library</Tint>
+            </Line>
+            <Line>
+              <Tint color={theme.accent}>shift+↑↓</Tint>
+              <Tint color={theme.dim}> reorder upcoming  </Tint>
+              <Tint color={theme.accent}>shift+n</Tint>
+              <Tint color={theme.dim}> play next</Tint>
+            </Line>
+            <Line>
+              <Tint color={theme.accent}>d</Tint>
+              <Tint color={theme.dim}> remove selected  </Tint>
+              <Tint color={theme.accent}>u</Tint>
+              <Tint color={theme.dim}> undo  </Tint>
+              <Tint color={theme.accent}>f</Tint>
+              <Tint color={theme.dim}> favorite</Tint>
             </Line>
             <Line>
               <Tint color={theme.accent}>tab</Tint>
@@ -170,6 +211,11 @@ export function HelpDialog(props: { onClose: () => void; narrow: boolean }) {
               <Tint color={theme.dim}> add, </Tint>
               <Tint color={theme.accent}>/</Tint>
               <Tint color={theme.dim}> type.</Tint>
+            </Line>
+            <Line>
+              <Tint color={theme.dim}>Queue drag: </Tint>
+              <Tint color={theme.accent}>drag rows</Tint>
+              <Tint color={theme.dim}> to reorder upcoming tracks.</Tint>
             </Line>
         </box>
       </scrollbox>
@@ -333,8 +379,7 @@ export function LogsDialog(props: {
   logs: LogEntry[];
   onClose: () => void;
   narrow: boolean;
-}) {
-  const levelColor = (level: LogEntry["level"]) =>
+}) {  const levelColor = (level: LogEntry["level"]) =>
     level === "error" ? theme.danger : level === "warn" ? theme.warning : theme.dim;
 
   return (
@@ -404,6 +449,321 @@ export function LogsDialog(props: {
           F4 toggles this view. Esc closes it.
         </text>
         <ActionButton label="CLOSE" onPress={props.onClose} tone="accent" />
+      </box>
+    </Overlay>
+  );
+}
+
+function SearchResultRow(props: {
+  track: Track;
+  index: number;
+  selected: boolean;
+  onSelect: (index: number) => void;
+}) {
+  const [hovered, setHovered] = createSignal(false);
+
+  return (
+    <box
+      height={1}
+      flexShrink={0}
+      flexDirection="row"
+      gap={1}
+      paddingLeft={1}
+      paddingRight={1}
+      backgroundColor={
+        props.selected ? theme.selectedRow : hovered() ? theme.surfaceHover : theme.surface
+      }
+      onMouseOver={() => setHovered(true)}
+      onMouseOut={() => setHovered(false)}
+      onMouseDown={(event) => {
+        event.stopPropagation();
+        event.preventDefault();
+        props.onSelect(props.index);
+      }}
+    >
+      <text fg={props.selected ? theme.highlight : theme.dim} selectable={false} width={1}>
+        {props.selected ? "›" : "·"}
+      </text>
+      <text fg={theme.faint} selectable={false} wrapMode="none" width={4} textAlign="right">
+        {String(props.index + 1).padStart(3, " ")}
+      </text>
+      <text
+        fg={props.selected ? theme.text : theme.textSoft}
+        attributes={props.selected ? TextAttributes.BOLD : undefined}
+        selectable={false}
+        wrapMode="none"
+        truncate
+        flexGrow={1}
+        minWidth={0}
+      >
+        {props.track.title}
+      </text>
+      <text
+        fg={theme.dim}
+        selectable={false}
+        wrapMode="none"
+        width={18}
+        truncate
+        flexShrink={0}
+      >
+        {singleLine(props.track.displaySource, 18)}
+      </text>
+      <text fg={theme.faint} selectable={false} wrapMode="none" width={7} textAlign="right">
+        {formatTime(props.track.durationSeconds)}
+      </text>
+    </box>
+  );
+}
+
+export function SearchDialog(props: {
+  query: string;
+  results: Track[];
+  selectedIndex: number;
+  narrow: boolean;
+  onSelect: (index: number) => void;
+  onClose: () => void;
+}) {
+  return (
+    <Overlay
+      title="SEARCH RESULTS"
+      width={props.narrow ? "94%" : 92}
+      onClose={props.onClose}
+    >
+      <text fg={theme.dim} selectable={false} wrapMode="word">
+        {`Top matches for "${singleLine(props.query, 120)}". Pick one to add it to the queue.`}
+      </text>
+
+      <Show
+        when={props.results.length > 0}
+        fallback={
+          <box flexGrow={1} minHeight={5} justifyContent="center" alignItems="center">
+            <text fg={theme.faint} selectable={false}>
+              No results. Try a different search.
+            </text>
+          </box>
+        }
+      >
+        <scrollbox flexGrow={1} minHeight={5} maxHeight={20} focusable={false}>
+          <For each={props.results}>
+            {(track, index) => (
+              <SearchResultRow
+                track={track}
+                index={index()}
+                selected={index() === props.selectedIndex}
+                onSelect={props.onSelect}
+              />
+            )}
+          </For>
+        </scrollbox>
+      </Show>
+
+      <box flexDirection="row" justifyContent="space-between" alignItems="center">
+        <text fg={theme.faint} selectable={false} wrapMode="none">
+          <Tint color={theme.muted}>↑↓</Tint>
+          <Tint color={theme.faint}> select  ·  </Tint>
+          <Tint color={theme.accent}>↵</Tint>
+          <Tint color={theme.faint}> add to queue  ·  </Tint>
+          <Tint color={theme.muted}>esc</Tint>
+          <Tint color={theme.faint}> close</Tint>
+        </text>
+        <ActionButton label="CLOSE" onPress={props.onClose} />
+      </box>
+    </Overlay>
+  );
+}
+
+function LibraryQueueRow(props: {
+  entry: Extract<LibraryEntry, { kind: "queue" }>;
+  selected: boolean;
+  onActivate: (index: number) => void;
+}) {
+  const [hovered, setHovered] = createSignal(false);
+
+  return (
+    <box
+      height={1}
+      flexShrink={0}
+      flexDirection="row"
+      gap={1}
+      paddingLeft={1}
+      paddingRight={1}
+      backgroundColor={
+        props.selected ? theme.selectedRow : hovered() ? theme.surfaceHover : theme.surface
+      }
+      onMouseOver={() => setHovered(true)}
+      onMouseOut={() => setHovered(false)}
+      onMouseDown={(event) => {
+        event.stopPropagation();
+        event.preventDefault();
+        props.onActivate(props.entry.index);
+      }}
+    >
+      <text fg={props.selected ? theme.highlight : theme.dim} selectable={false} width={1}>
+        {props.selected ? "›" : "▤"}
+      </text>
+      <text
+        fg={props.selected ? theme.text : theme.textSoft}
+        attributes={props.selected ? TextAttributes.BOLD : undefined}
+        selectable={false}
+        wrapMode="none"
+        truncate
+        flexGrow={1}
+        minWidth={0}
+      >
+        {singleLine(props.entry.name, 120)}
+      </text>
+      <text fg={theme.faint} selectable={false} wrapMode="none" width={12} textAlign="right">
+        {props.entry.trackCount} tracks
+      </text>
+      <text fg={theme.faint} selectable={false} wrapMode="none" width={7} textAlign="right">
+        {savedDate(props.entry.savedAtUtc)}
+      </text>
+    </box>
+  );
+}
+
+function LibraryFavoriteRow(props: {
+  entry: Extract<LibraryEntry, { kind: "favorite" }>;
+  selected: boolean;
+  onActivate: (index: number) => void;
+}) {
+  const [hovered, setHovered] = createSignal(false);
+
+  return (
+    <box
+      height={1}
+      flexShrink={0}
+      flexDirection="row"
+      gap={1}
+      paddingLeft={1}
+      paddingRight={1}
+      backgroundColor={
+        props.selected ? theme.selectedRow : hovered() ? theme.surfaceHover : theme.surface
+      }
+      onMouseOver={() => setHovered(true)}
+      onMouseOut={() => setHovered(false)}
+      onMouseDown={(event) => {
+        event.stopPropagation();
+        event.preventDefault();
+        props.onActivate(props.entry.index);
+      }}
+    >
+      <text fg={props.selected ? theme.highlight : theme.warning} selectable={false} width={1}>
+        {props.selected ? "›" : "★"}
+      </text>
+      <text
+        fg={props.selected ? theme.text : theme.textSoft}
+        attributes={props.selected ? TextAttributes.BOLD : undefined}
+        selectable={false}
+        wrapMode="none"
+        truncate
+        flexGrow={1}
+        minWidth={0}
+      >
+        {props.entry.track.title}
+      </text>
+      <text fg={theme.dim} selectable={false} wrapMode="none" width={18} truncate>
+        {singleLine(props.entry.track.displaySource, 18)}
+      </text>
+      <text fg={theme.faint} selectable={false} wrapMode="none" width={7} textAlign="right">
+        {formatTime(props.entry.track.durationSeconds)}
+      </text>
+    </box>
+  );
+}
+
+export function LibraryDialog(props: {
+  entries: LibraryEntry[];
+  selectedIndex: number;
+  narrow: boolean;
+  onActivate: (index: number) => void;
+  onDelete: () => void;
+  onExport: () => void;
+  onClose: () => void;
+}) {
+  const queues = () => props.entries.filter((entry) => entry.kind === "queue");
+  const favorites = () => props.entries.filter((entry) => entry.kind === "favorite");
+  const selected = () => props.entries.find((entry) => entry.index === props.selectedIndex);
+  const queueSelected = () => selected()?.kind === "queue";
+
+  return (
+    <Overlay title="LIBRARY" width={props.narrow ? "94%" : 96} onClose={props.onClose}>
+      <text fg={theme.dim} selectable={false} wrapMode="word">
+        Save the current queue with <Tint color={theme.accent}>save &lt;name&gt;</Tint>, import
+        with <Tint color={theme.accent}>import &lt;file.m3u&gt;</Tint>, or export with{" "}
+        <Tint color={theme.accent}>export [file.m3u]</Tint>.
+      </text>
+
+      <Show
+        when={props.entries.length > 0}
+        fallback={
+          <box flexGrow={1} minHeight={6} justifyContent="center" alignItems="center">
+            <text fg={theme.faint} selectable={false}>
+              No saved queues or favorites yet.
+            </text>
+          </box>
+        }
+      >
+        <scrollbox flexGrow={1} minHeight={6} maxHeight={22} focusable={false}>
+          <Show when={queues().length > 0} fallback={<box height={0} />}>
+            <box height={1} flexDirection="row" gap={1} paddingLeft={2}>
+              <text fg={theme.accent} attributes={TextAttributes.BOLD} selectable={false}>
+                SAVED QUEUES
+              </text>
+            </box>
+            <For each={queues()}>
+              {(entry) => (
+                <LibraryQueueRow
+                  entry={entry as Extract<LibraryEntry, { kind: "queue" }>}
+                  selected={entry.index === props.selectedIndex}
+                  onActivate={props.onActivate}
+                />
+              )}
+            </For>
+          </Show>
+
+          <Show when={favorites().length > 0} fallback={<box height={0} />}>
+            <box height={1} flexDirection="row" gap={1} paddingLeft={2}>
+              <text fg={theme.highlight} attributes={TextAttributes.BOLD} selectable={false}>
+                FAVORITES
+              </text>
+            </box>
+            <For each={favorites()}>
+              {(entry) => (
+                <LibraryFavoriteRow
+                  entry={entry as Extract<LibraryEntry, { kind: "favorite" }>}
+                  selected={entry.index === props.selectedIndex}
+                  onActivate={props.onActivate}
+                />
+              )}
+            </For>
+          </Show>
+        </scrollbox>
+      </Show>
+
+      <box flexDirection="row" gap={1} alignItems="center" flexWrap="wrap">
+        <ActionButton
+          label="DELETE"
+          onPress={props.onDelete}
+          tone="danger"
+          disabled={!queueSelected()}
+        />
+        <ActionButton
+          label="EXPORT"
+          onPress={props.onExport}
+          tone="highlight"
+          disabled={!queueSelected()}
+        />
+        <text fg={theme.faint} selectable={false} wrapMode="none">
+          <Tint color={theme.accent}>↵</Tint>
+          <Tint color={theme.faint}> load / queue  ·  </Tint>
+          <Tint color={theme.muted}>x</Tint>
+          <Tint color={theme.faint}> delete  ·  </Tint>
+          <Tint color={theme.muted}>e</Tint>
+          <Tint color={theme.faint}> export</Tint>
+        </text>
+        <box flexGrow={1} />
+        <ActionButton label="CLOSE" onPress={props.onClose} />
       </box>
     </Overlay>
   );

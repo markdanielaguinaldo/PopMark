@@ -59,6 +59,7 @@ internal sealed class BridgeSession
                 _player.LastMessage = dependencyMessage;
 
             EmitTools();
+            EmitLibrary();
             EmitState(force: true);
 
             var stdinTask = ReadStandardInputAsync();
@@ -201,9 +202,36 @@ internal sealed class BridgeSession
                     return await HandleInputAsync(request.Text ?? request.Value ?? string.Empty, request.Id);
 
                 case "add":
-                    await RunBusyAsync("Adding to queue...", () =>
-                        AddTargetAsync(request.Target ?? request.Value ?? request.Text ?? string.Empty));
+                    await AddTargetAsync(request.Target ?? request.Value ?? request.Text ?? string.Empty, request.Id);
                     return Acknowledge(request.Id);
+
+                case "add-track":
+                    await HandleAddTrackAsync(request);
+                    return true;
+
+                case "search":
+                    await HandleSearchAsync(request);
+                    return true;
+
+                case "remove-track":
+                    await HandleRemoveTrackAsync(request);
+                    return true;
+
+                case "move-track":
+                    HandleMoveTrack(request);
+                    return true;
+
+                case "play-next":
+                    HandlePlayNext(request);
+                    return true;
+
+                case "undo":
+                    await _player.UndoAsync();
+                    return Acknowledge(request.Id);
+
+                case "library":
+                    await HandleLibraryAsync(request);
+                    return true;
 
                 case "seek":
                     await HandleSeekAsync(request);
@@ -318,9 +346,82 @@ internal sealed class BridgeSession
                 return true;
 
             case "add":
-                await RunBusyAsync("Adding to queue...", () =>
-                    AddTargetAsync(request.Target ?? request.Value ?? string.Empty));
+                await AddTargetAsync(request.Target ?? request.Value ?? string.Empty, request.Id);
                 return Acknowledge(request.Id);
+
+            case "search":
+            case "find":
+                await HandleSearchAsync(new BridgeRequest(
+                    "search",
+                    request.Id,
+                    Text: request.Text ?? request.Target ?? request.Value,
+                    Limit: request.Limit));
+                return true;
+
+            case "undo":
+                await _player.UndoAsync();
+                return Acknowledge(request.Id);
+
+            case "library":
+            case "queues":
+            case "favorites":
+                EmitLibrary();
+                Write(BridgeAckDto.Success(request.Id));
+                return true;
+
+            case "save":
+            case "save-queue":
+            case "savequeue":
+                await HandleLibraryAsync(new BridgeRequest(
+                    "library",
+                    request.Id,
+                    Action: "save",
+                    Name: request.Name ?? request.Text));
+                return true;
+
+            case "load":
+            case "load-queue":
+            case "loadqueue":
+                await HandleLibraryAsync(new BridgeRequest(
+                    "library",
+                    request.Id,
+                    Action: "load",
+                    Name: request.Name ?? request.Text));
+                return true;
+
+            case "delete-queue":
+            case "deletequeue":
+            case "rmqueue":
+                await HandleLibraryAsync(new BridgeRequest(
+                    "library",
+                    request.Id,
+                    Action: "delete",
+                    Name: request.Name ?? request.Text));
+                return true;
+
+            case "export":
+                await HandleLibraryAsync(new BridgeRequest(
+                    "library",
+                    request.Id,
+                    Action: "export",
+                    Path: request.Path ?? request.Text));
+                return true;
+
+            case "import":
+                await HandleLibraryAsync(new BridgeRequest(
+                    "library",
+                    request.Id,
+                    Action: "import",
+                    Path: request.Path ?? request.Text));
+                return true;
+
+            case "favorite":
+            case "fav":
+                await HandleLibraryAsync(new BridgeRequest(
+                    "library",
+                    request.Id,
+                    Action: "favorite"));
+                return true;
 
             default:
                 Write(BridgeAckDto.Failure(request.Id, Program.UnknownCommandMessage(name)));
@@ -341,14 +442,22 @@ internal sealed class BridgeSession
 
         switch (command)
         {
+            case "search":
+            case "find":
+            {
+                var query = string.Join(' ', args.Skip(1)).Trim();
+                await HandleSearchAsync(new BridgeRequest("search", id, Text: query));
+                return true;
+            }
+
             case "add":
-                if (!Program.TryResolveAddTarget(args, out var target))
+                if (args.Length < 2)
                 {
                     Write(BridgeAckDto.Failure(id, Program.AddUsageMessage()));
                     return true;
                 }
 
-                await RunBusyAsync("Adding to queue...", () => AddTargetAsync(target));
+                await AddTargetAsync(string.Join(' ', args.Skip(1)), id);
                 return Acknowledge(id);
 
             case "play":
@@ -402,6 +511,71 @@ internal sealed class BridgeSession
             case "shuf":
                 _player.ShufflePlaylist();
                 return Acknowledge(id);
+
+            case "undo":
+                await _player.UndoAsync();
+                return Acknowledge(id);
+
+            case "library":
+            case "queues":
+            case "favorites":
+                EmitLibrary();
+                _player.LastMessage = "Library refreshed.";
+                return Acknowledge(id);
+
+            case "save":
+            case "save-queue":
+            case "savequeue":
+                await HandleLibraryAsync(new BridgeRequest(
+                    "library",
+                    id,
+                    Action: "save",
+                    Name: string.Join(' ', args.Skip(1))));
+                return true;
+
+            case "load":
+            case "load-queue":
+            case "loadqueue":
+                await HandleLibraryAsync(new BridgeRequest(
+                    "library",
+                    id,
+                    Action: "load",
+                    Name: string.Join(' ', args.Skip(1))));
+                return true;
+
+            case "delete-queue":
+            case "deletequeue":
+            case "rmqueue":
+                await HandleLibraryAsync(new BridgeRequest(
+                    "library",
+                    id,
+                    Action: "delete",
+                    Name: string.Join(' ', args.Skip(1))));
+                return true;
+
+            case "export":
+                await HandleLibraryAsync(new BridgeRequest(
+                    "library",
+                    id,
+                    Action: "export",
+                    Path: string.Join(' ', args.Skip(1))));
+                return true;
+
+            case "import":
+                await HandleLibraryAsync(new BridgeRequest(
+                    "library",
+                    id,
+                    Action: "import",
+                    Path: string.Join(' ', args.Skip(1))));
+                return true;
+
+            case "favorite":
+            case "fav":
+                await HandleLibraryAsync(new BridgeRequest(
+                    "library",
+                    id,
+                    Action: "favorite"));
+                return true;
 
             case "goto":
             case "go-to":
@@ -465,7 +639,7 @@ internal sealed class BridgeSession
             default:
                 if (Program.IsLikelyUrl(input))
                 {
-                    await RunBusyAsync("Adding to queue...", () => AddTargetAsync(input));
+                    await AddTargetAsync(input, id);
                     return Acknowledge(id);
                 }
 
@@ -474,7 +648,7 @@ internal sealed class BridgeSession
         }
     }
 
-    private async Task AddTargetAsync(string target)
+    private async Task AddTargetAsync(string target, string? id = null)
     {
         target = target.Trim();
         if (string.IsNullOrWhiteSpace(target))
@@ -483,16 +657,268 @@ internal sealed class BridgeSession
             return;
         }
 
-        var dependencyMessage = await _dependencies.EnsurePlaybackDependenciesAsync(
-            promptToInstall: false);
-        if (!_dependencies.ArePlaybackDependenciesAvailable())
+        if (!Program.IsLikelyUrl(target))
         {
-            _player.LastMessage = dependencyMessage;
-            EmitTools();
+            await RunBusyAsync("Searching YouTube...", () =>
+                SearchAndEmitAsync(target, id, limit: 8));
             return;
         }
 
-        await _player.AddUrlAsync(target);
+        await RunBusyAsync("Adding to queue...", async () =>
+        {
+            var dependencyMessage = await _dependencies.EnsurePlaybackDependenciesAsync(
+                promptToInstall: false);
+            if (!_dependencies.ArePlaybackDependenciesAvailable())
+            {
+                _player.LastMessage = dependencyMessage;
+                EmitTools();
+                return;
+            }
+
+            await _player.AddUrlAsync(target);
+        });
+    }
+
+    private async Task HandleSearchAsync(BridgeRequest request)
+    {
+        var query = (request.Text ?? request.Value ?? request.Target ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            Write(BridgeAckDto.Failure(request.Id, "Usage: search <query>."));
+            return;
+        }
+
+        await RunBusyAsync("Searching YouTube...", () =>
+            SearchAndEmitAsync(query, request.Id, request.Limit ?? 8));
+        Write(BridgeAckDto.Success(request.Id, _player.LastMessage));
+    }
+
+    private async Task SearchAndEmitAsync(string query, string? id, int limit)
+    {
+        var results = await _player.SearchAsync(query, limit);
+        Write(BridgeSearchResultsDto.Create(id, query, results));
+        _player.LastMessage = results.Count == 0
+            ? $"No results for \"{query}\"."
+            : $"{results.Count} result(s) for \"{query}\".";
+        EmitState(force: true);
+    }
+
+    private async Task HandleAddTrackAsync(BridgeRequest request)
+    {
+        if (!TryToTrack(request.Track, out var track))
+        {
+            Write(BridgeAckDto.Failure(request.Id, "add-track requires a track with an http(s) URL."));
+            return;
+        }
+
+        await RunBusyAsync("Adding to queue...", () =>
+            _player.AddTracksAsync(new[] { track }));
+        Acknowledge(request.Id, _player.LastMessage);
+    }
+
+    private async Task HandleRemoveTrackAsync(BridgeRequest request)
+    {
+        if (request.Index is not { } index)
+        {
+            Write(BridgeAckDto.Failure(request.Id, "remove-track requires an index."));
+            return;
+        }
+
+        await _player.RemoveAtAsync(index);
+        Acknowledge(request.Id, _player.LastMessage);
+    }
+
+    private void HandleMoveTrack(BridgeRequest request)
+    {
+        if (request.Index is not { } index || request.To is not { } target)
+        {
+            Write(BridgeAckDto.Failure(request.Id, "move-track requires index and to."));
+            return;
+        }
+
+        _player.MovePending(index, target);
+        Acknowledge(request.Id, _player.LastMessage);
+    }
+
+    private void HandlePlayNext(BridgeRequest request)
+    {
+        if (request.Index is not { } index)
+        {
+            Write(BridgeAckDto.Failure(request.Id, "play-next requires an index."));
+            return;
+        }
+
+        _player.MoveToFrontOfPending(index);
+        Acknowledge(request.Id, _player.LastMessage);
+    }
+
+    private async Task HandleLibraryAsync(BridgeRequest request)
+    {
+        var action = (request.Action ?? "list").Trim().ToLowerInvariant();
+
+        switch (action)
+        {
+            case "list":
+            case "status":
+                EmitLibrary();
+                Write(BridgeAckDto.Success(request.Id));
+                return;
+
+            case "save":
+            case "save-queue":
+            {
+                var tracks = _player.GetPlaylist();
+                if (tracks.Count == 0)
+                {
+                    Write(BridgeAckDto.Failure(request.Id, "The queue is empty; add a track before saving."));
+                    return;
+                }
+
+                var name = LibraryStore.SaveQueue(
+                    request.Name ?? request.Text,
+                    tracks);
+                EmitLibrary();
+                _player.LastMessage = $"Saved queue \"{name}\" ({tracks.Count} track(s)).";
+                Acknowledge(request.Id, _player.LastMessage);
+                return;
+            }
+
+            case "load":
+            case "load-queue":
+            {
+                var name = (request.Name ?? request.Text ?? string.Empty).Trim();
+                if (string.IsNullOrWhiteSpace(name))
+                {
+                    Write(BridgeAckDto.Failure(request.Id, "load requires a saved queue name."));
+                    return;
+                }
+
+                var tracks = LibraryStore.GetQueue(name);
+                if (tracks is null || tracks.Count == 0)
+                {
+                    Write(BridgeAckDto.Failure(request.Id, $"No saved queue named \"{name}\"."));
+                    return;
+                }
+
+                await RunBusyAsync($"Loading \"{name}\"...", () =>
+                    _player.ReplaceQueueAsync(tracks, request.Play ?? true));
+                EmitLibrary();
+                Acknowledge(request.Id, _player.LastMessage);
+                return;
+            }
+
+            case "delete":
+            case "delete-queue":
+            {
+                var name = (request.Name ?? request.Text ?? string.Empty).Trim();
+                if (string.IsNullOrWhiteSpace(name))
+                {
+                    Write(BridgeAckDto.Failure(request.Id, "delete requires a saved queue name."));
+                    return;
+                }
+
+                if (!LibraryStore.DeleteQueue(name))
+                {
+                    Write(BridgeAckDto.Failure(request.Id, $"No saved queue named \"{name}\"."));
+                    return;
+                }
+
+                EmitLibrary();
+                _player.LastMessage = $"Deleted saved queue \"{name}\".";
+                Acknowledge(request.Id, _player.LastMessage);
+                return;
+            }
+
+            case "export":
+            {
+                var name = request.Name?.Trim();
+                var tracks = string.IsNullOrWhiteSpace(name)
+                    ? null
+                    : LibraryStore.GetQueue(name);
+
+                tracks ??= _player.GetPlaylist();
+                if (tracks.Count == 0)
+                {
+                    Write(BridgeAckDto.Failure(request.Id, "There are no tracks to export."));
+                    return;
+                }
+
+                var path = LibraryStore.Export(tracks, name, request.Path);
+                _player.LastMessage = $"Exported {tracks.Count} track(s) to {path}";
+                EmitState(force: true);
+                Write(BridgeAckDto.Success(request.Id, _player.LastMessage));
+                return;
+            }
+
+            case "import":
+            {
+                var path = request.Path ?? request.Text;
+                if (string.IsNullOrWhiteSpace(path))
+                {
+                    Write(BridgeAckDto.Failure(request.Id, "import requires a .m3u path."));
+                    return;
+                }
+
+                var tracks = LibraryStore.Import(path);
+                await RunBusyAsync("Importing playlist...", () =>
+                    _player.ReplaceQueueAsync(tracks, request.Play ?? true));
+                EmitLibrary();
+                Write(BridgeAckDto.Success(request.Id, _player.LastMessage));
+                return;
+            }
+
+            case "favorite":
+            case "favourite":
+            case "toggle-favorite":
+            {
+                var track = TryToTrack(request.Track, out var requested)
+                    ? requested
+                    : _player.CreateSnapshot().Current;
+
+                if (track is null)
+                {
+                    Write(BridgeAckDto.Failure(request.Id, "Nothing is playing to favorite."));
+                    return;
+                }
+
+                LibraryStore.ToggleFavorite(track, out var added);
+                EmitLibrary();
+                _player.LastMessage = added
+                    ? $"Favorited: {track.Title}"
+                    : $"Removed favorite: {track.Title}";
+                Acknowledge(request.Id, _player.LastMessage);
+                return;
+            }
+
+            default:
+                Write(BridgeAckDto.Failure(
+                    request.Id,
+                    $"Unknown library action: {action}. Use list, save, load, delete, export, import, or favorite."));
+                return;
+        }
+    }
+
+    private static bool TryToTrack(BridgeTrackDto? dto, out Track track)
+    {
+        track = null!;
+        if (dto is null)
+            return false;
+
+        var url = dto.Url?.Trim();
+        if (string.IsNullOrWhiteSpace(url) || !Program.IsLikelyUrl(url))
+            return false;
+
+        var title = string.IsNullOrWhiteSpace(dto.Title) ? "YouTube track" : dto.Title.Trim();
+        var source = string.IsNullOrWhiteSpace(dto.DisplaySource)
+            ? "YouTube"
+            : dto.DisplaySource.Trim();
+
+        TimeSpan? duration = null;
+        if (dto.DurationSeconds is { } seconds && double.IsFinite(seconds) && seconds > 0)
+            duration = TimeSpan.FromSeconds(Math.Min(seconds, TimeSpan.MaxValue.TotalSeconds));
+
+        track = new Track(title, url, source, duration);
+        return true;
     }
 
     private async Task HandleSeekAsync(BridgeRequest request)
@@ -685,6 +1111,18 @@ internal sealed class BridgeSession
             .ToList();
 
         Write(BridgeToolsDto.From(tools));
+    }
+
+    private void EmitLibrary()
+    {
+        try
+        {
+            Write(BridgeLibraryDto.From(LibraryStore.Load()));
+        }
+        catch (Exception ex)
+        {
+            Write(BridgeLogDto.Create("library", "error", $"Could not read the library: {ex.Message}"));
+        }
     }
 
     private static string BuildQueueSignature(PlayerSnapshot snapshot)

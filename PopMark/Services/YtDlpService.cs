@@ -13,7 +13,29 @@ public sealed class YtDlpService
         if (result.ExitCode != 0)
             throw new InvalidOperationException(BuildYtDlpError(result.Error));
 
-        using var document = JsonDocument.Parse(result.Output);
+        return ParsePlaylist(result.Output, url);
+    }
+
+    public async Task<IReadOnlyList<Track>> SearchAsync(
+        string query,
+        int limit = 8,
+        CancellationToken cancellationToken = default)
+    {
+        query = StripSearchPrefix(query.Trim());
+        if (string.IsNullOrWhiteSpace(query))
+            throw new InvalidOperationException("Enter a search term.");
+
+        var count = Math.Clamp(limit, 1, 10);
+        var result = await RunYtDlpAsync($"ytsearch{count}:{query}", cancellationToken);
+        if (result.ExitCode != 0)
+            throw new InvalidOperationException(BuildYtDlpError(result.Error));
+
+        return ParseSearchResults(result.Output);
+    }
+
+    internal static IReadOnlyList<Track> ParsePlaylist(string json, string fallbackUrl)
+    {
+        using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
         var tracks = new List<Track>();
 
@@ -38,7 +60,7 @@ public sealed class YtDlpService
         }
         else
         {
-            var trackUrl = ResolveTrackUrl(root) ?? url;
+            var trackUrl = ResolveTrackUrl(root) ?? fallbackUrl;
             tracks.Add(new Track(
                 GetString(root, "title") ?? "YouTube track",
                 trackUrl,
@@ -49,6 +71,49 @@ public sealed class YtDlpService
         return tracks.Count == 0
             ? throw new InvalidOperationException("yt-dlp did not return playable tracks for that URL.")
             : tracks;
+    }
+
+    internal static IReadOnlyList<Track> ParseSearchResults(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+        var tracks = new List<Track>();
+
+        if (!root.TryGetProperty("entries", out var entries) || entries.ValueKind != JsonValueKind.Array)
+            return tracks;
+
+        foreach (var entry in entries.EnumerateArray())
+        {
+            if (entry.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+                continue;
+
+            var trackUrl = ResolveTrackUrl(entry);
+            if (string.IsNullOrWhiteSpace(trackUrl))
+                continue;
+
+            tracks.Add(new Track(
+                GetString(entry, "title") ?? $"Result {tracks.Count + 1}",
+                trackUrl,
+                GetString(entry, "channel") ?? GetString(entry, "uploader") ?? "YouTube",
+                GetDuration(entry)));
+        }
+
+        return tracks;
+    }
+
+    private static string StripSearchPrefix(string query)
+    {
+        if (!query.StartsWith("ytsearch", StringComparison.OrdinalIgnoreCase))
+            return query;
+
+        var colon = query.IndexOf(':');
+        if (colon < 0)
+            return query;
+
+        var count = query["ytsearch".Length..colon];
+        return count.Length == 0 || count.All(char.IsDigit)
+            ? query[(colon + 1)..].Trim()
+            : query;
     }
 
     private static async Task<ProcessResult> RunYtDlpAsync(string url, CancellationToken cancellationToken)

@@ -134,9 +134,16 @@ dotnet run --project .\PopMark\PopMark.csproj -- --legacy-ui
 - **Phone-friendly layout** - narrow terminals switch to a compact layout: a two-row
   touch toolbar, stacked transport and volume, and a Focus View with tappable
   `RETURN`/`THEME` controls.
+- **Search picker** — `add <words>` or `search <words>` shows the top YouTube matches with
+  channel and duration, then queues the one you pick.
 - **YouTube queue** — add videos, playlists, or a search result from the terminal.
-- **No downloads** — audio is streamed through `mpv`; PopMark keeps a queue, not a music
-  library.
+- **Saved library** — save named queues, favorite tracks, and import or export `.m3u`
+  playlists. Open it with <kbd>F6</kbd>.
+- **Queue editing** — drag or use <kbd>Shift</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> to reorder
+  upcoming tracks, move one to play next, remove rows, and undo the last change.
+  Duplicate URLs are skipped automatically.
+- **No downloads** — audio is streamed through `mpv`; PopMark saves queue metadata, not
+  music files.
 - **Queue restore** — current track, upcoming tracks, and volume return on the next
   launch.
 - **Focus View** - a large now-playing screen with a dim twinkling starfield, waveform, progress, and track info.
@@ -161,6 +168,11 @@ dotnet run --project .\PopMark\PopMark.csproj -- --legacy-ui
 | <kbd>Space</kbd> | Play/pause in navigation or Focus View |
 | <kbd>n</kbd> / <kbd>p</kbd> | Next / previous track outside command entry |
 | <kbd>↑</kbd> / <kbd>↓</kbd> | Move the queue selection |
+| <kbd>Shift</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd> | Reorder the selected upcoming track |
+| <kbd>Shift</kbd>+<kbd>n</kbd> | Move the selected upcoming track to play next |
+| <kbd>d</kbd> / <kbd>Delete</kbd> | Remove the selected queue row |
+| <kbd>u</kbd> | Undo the last queue change |
+| <kbd>f</kbd> | Favorite or unfavorite the selected/current track |
 | <kbd>Enter</kbd> | Play the selected row |
 | <kbd>Ctrl</kbd>+<kbd>P</kbd> | Toggle playback from anywhere |
 | <kbd>Ctrl</kbd>+<kbd>N</kbd> / <kbd>Ctrl</kbd>+<kbd>B</kbd> | Next / previous track |
@@ -173,8 +185,10 @@ dotnet run --project .\PopMark\PopMark.csproj -- --legacy-ui
 | <kbd>F4</kbd> | Diagnostics |
 | <kbd>F5</kbd> | Next color theme |
 | <kbd>Shift</kbd>+<kbd>F5</kbd> | Previous color theme |
+| <kbd>F6</kbd> | Saved queues and favorites |
 | <kbd>Ctrl</kbd>+<kbd>Q</kbd> | Quit |
 | Click a queue row | Play that track |
+| Drag a queue row | Reorder upcoming tracks |
 | Drag or click the progress bar | Seek to that timestamp |
 | Drag or click the volume slider | Set the volume |
 
@@ -193,10 +207,19 @@ edges and stays quieter behind the reading area.
 | Command | Action |
 | --- | --- |
 | `add <url or search>` | Add a YouTube video, playlist, or search result |
+| `search <query>` | Show the top matches before queueing one |
 | `play` / `pause` | Toggle playback |
 | `next` / `previous` | Move through the queue |
 | `goto <#\|title>` | Focus a playlist row |
 | `shuffle` | Randomize upcoming tracks |
+| `undo` | Undo the last queue change |
+| `library` | Open saved queues and favorites |
+| `save <name>` | Save the current queue |
+| `load <name>` | Replace the queue with a saved queue |
+| `delete-queue <name>` | Delete a saved queue |
+| `export [file.m3u]` | Export the current queue as M3U |
+| `import <file.m3u>` | Replace the queue from an M3U file |
+| `favorite` | Favorite or unfavorite the current track |
 | `stop` | Stop and clear the queue |
 | `clear playlist` | Stop and empty the queue |
 | `tools` | Show resolved tool paths and open tool management |
@@ -216,7 +239,7 @@ same queue and tool settings.
 
 | Artifact | Purpose | Status |
 | --- | --- | --- |
-| [`PopMark-1.1.2-OpenTUI-win-x64-portable.zip`](https://github.com/markdanielaguinaldo/PopMark/releases/tag/v1.1.2-opentui) | Current OpenTUI build with bundled Bun and UI assets | Active |
+| [`PopMark-1.2.0-OpenTUI-win-x64-portable.zip`](https://github.com/markdanielaguinaldo/PopMark/releases/tag/v1.2.0-opentui) | Current OpenTUI build with bundled Bun and UI assets | Active |
 | [`PopMark-1.1.2-legacy-win-x64.zip`](https://github.com/markdanielaguinaldo/PopMark/releases/tag/v1.1.2-legacy) | Backup of the original C# terminal UI, built from tag `v1.1.2` | Deprecated |
 
 The legacy archive is intentionally self-contained. It is provided so the previous

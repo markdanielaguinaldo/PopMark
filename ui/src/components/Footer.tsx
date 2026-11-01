@@ -19,6 +19,7 @@ export function Footer(props: {
   onOpenTools: () => void;
   onOpenFocus: () => void;
   onOpenLogs: () => void;
+  onOpenLibrary: () => void;
   onCycleTheme: () => void;
   onQuit: () => void;
 }) {
@@ -150,6 +151,7 @@ export function Footer(props: {
                   <ActionButton label="HELP" onPress={props.onOpenHelp} variant="ghost" />
                   <ActionButton label="TOOLS" onPress={props.onOpenTools} variant="ghost" />
                   <ActionButton label="FOCUS" onPress={props.onOpenFocus} variant="ghost" />
+                  <ActionButton label="LIB" onPress={props.onOpenLibrary} variant="ghost" />
                   <ActionButton label="LOGS" onPress={props.onOpenLogs} variant="ghost" />
                   <ActionButton
                     label="THEME"
@@ -172,6 +174,8 @@ export function Footer(props: {
                 <Tint color={theme.muted}> logs </Tint>
                 <Tint color={theme.accent}>[F5]</Tint>
                 <Tint color={theme.muted}> theme </Tint>
+                <Tint color={theme.accent}>[F6]</Tint>
+                <Tint color={theme.muted}> library </Tint>
                 <Tint color={theme.faint}> · </Tint>
                 <Tint color={theme.accent}>[ctrl+q]</Tint>
                 <Tint color={theme.muted}> quit</Tint>
@@ -190,6 +194,7 @@ export function Footer(props: {
           <ActionButton label="HELP" onPress={props.onOpenHelp} variant="ghost" />
           <ActionButton label="TOOLS" onPress={props.onOpenTools} variant="ghost" />
           <ActionButton label="FOCUS" onPress={props.onOpenFocus} variant="ghost" />
+          <ActionButton label="LIB" onPress={props.onOpenLibrary} variant="ghost" />
           <ActionButton label="LOGS" onPress={props.onOpenLogs} variant="ghost" />
         </box>
         <box flexDirection="row" gap={1} height={1} alignItems="center" flexShrink={0}>

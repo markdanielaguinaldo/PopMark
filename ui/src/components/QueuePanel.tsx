@@ -38,7 +38,10 @@ function sectionColor(kind: PlaylistEntry["kind"]): string {
 function QueueRow(props: {
   entry: PlaylistEntry;
   selected: boolean;
-  onPlay: (index: number) => void;
+  onMouseDown: (index: number, kind: PlaylistEntry["kind"]) => void;
+  onMouseDrag: (index: number, kind: PlaylistEntry["kind"]) => void;
+  onMouseUp: (index: number, kind: PlaylistEntry["kind"]) => void;
+  onMouseDrop: (index: number) => void;
 }) {
   const [hovered, setHovered] = createSignal(false);
 
@@ -108,8 +111,11 @@ function QueueRow(props: {
       onMouseDown={(event) => {
         event.stopPropagation();
         event.preventDefault();
-        props.onPlay(props.entry.index);
+        props.onMouseDown(props.entry.index, props.entry.kind);
       }}
+      onMouseDrag={() => props.onMouseDrag(props.entry.index, props.entry.kind)}
+      onMouseUp={() => props.onMouseUp(props.entry.index, props.entry.kind)}
+      onMouseDrop={() => props.onMouseDrop(props.entry.index)}
     >
       <text fg={railColor()} selectable={false} wrapMode="none" width={1}>
         {rail()}
@@ -148,13 +154,62 @@ export function QueuePanel(props: {
   compact?: boolean;
   tiny?: boolean;
   dense?: boolean;
+  canRemove: boolean;
+  canPlayNext: boolean;
   onPlay: (index: number) => void;
+  onSelect: (index: number) => void;
+  onMove: (from: number, to: number) => void;
+  onPlayNext: () => void;
+  onRemove: () => void;
+  onUndo: () => void;
   onShuffle: () => void;
   onClear: () => void;
   onFocusInput: () => void;
 }) {
   let scroll: ScrollBoxRenderable | undefined;
+  let dragSource: number | null = null;
+  let dragMoved = false;
   const dimensions = useTerminalDimensions();
+
+  function handleRowDown(index: number, kind: PlaylistEntry["kind"]) {
+    props.onSelect(index);
+    dragSource = kind === "pending" ? index : null;
+    dragMoved = false;
+  }
+
+  function handleRowDrag(index: number, kind: PlaylistEntry["kind"]) {
+    if (dragSource === index && kind === "pending") dragMoved = true;
+  }
+
+  function handleRowUp(index: number, kind: PlaylistEntry["kind"]) {
+    if (dragSource === null || kind !== "pending") {
+      props.onPlay(index);
+      return;
+    }
+
+    const source = dragSource;
+    // Drop events arrive in the same turn as mouse-up. Defer the click action
+    // so releasing on another row reorders instead of starting playback.
+    setTimeout(() => {
+      if (dragSource !== source) return;
+      if (!dragMoved) props.onPlay(index);
+      dragSource = null;
+      dragMoved = false;
+    }, 0);
+  }
+
+  function handleRowDrop(index: number) {
+    const source = dragSource;
+    if (source === null) return;
+
+    dragSource = null;
+    if (source === index) {
+      if (!dragMoved) props.onPlay(index);
+    } else {
+      props.onMove(source, index);
+    }
+    dragMoved = false;
+  }
 
   // On a phone the queue header costs a whole track row; drop it when the panel
   // is too short for both. Shuffle and clear remain available as commands.
@@ -208,6 +263,28 @@ export function QueuePanel(props: {
             </Show>
           </box>
           <box flexDirection="row" gap={1} flexShrink={0}>
+            <Show when={!props.compact} fallback={<box height={0} />}>
+              <ActionButton
+                label="NEXT"
+                onPress={props.onPlayNext}
+                tone="highlight"
+                variant="ghost"
+                disabled={!props.canPlayNext}
+              />
+              <ActionButton
+                label="REMOVE"
+                onPress={props.onRemove}
+                tone="danger"
+                variant="ghost"
+                disabled={!props.canRemove}
+              />
+              <ActionButton
+                label="UNDO"
+                onPress={props.onUndo}
+                tone="info"
+                variant="ghost"
+              />
+            </Show>
             <ActionButton
               label={props.compact ? "SHUF" : "SHUFFLE"}
               onPress={props.onShuffle}
@@ -296,7 +373,10 @@ export function QueuePanel(props: {
                     <QueueRow
                       entry={entry}
                       selected={entry.index === props.selectedIndex}
-                      onPlay={props.onPlay}
+                      onMouseDown={handleRowDown}
+                      onMouseDrag={handleRowDrag}
+                      onMouseUp={handleRowUp}
+                      onMouseDrop={handleRowDrop}
                     />
                   )}
                 </For>
@@ -312,12 +392,15 @@ export function QueuePanel(props: {
             <Tint color={theme.accent} bold>
               ↵
             </Tint>
-            <Tint color={theme.dim}> play selection</Tint>
-            <Tint color={theme.faint}>  ·  </Tint>
+            <Tint color={theme.dim}> play  ·  </Tint>
             <Tint color={theme.muted}>↑↓</Tint>
             <Tint color={theme.faint}> move  ·  </Tint>
-            <Tint color={theme.muted}>space</Tint>
-            <Tint color={theme.faint}> pause  ·  click a row to play</Tint>
+            <Tint color={theme.muted}>shift+↑↓</Tint>
+            <Tint color={theme.faint}> reorder  ·  </Tint>
+            <Tint color={theme.muted}>d</Tint>
+            <Tint color={theme.faint}> remove  ·  </Tint>
+            <Tint color={theme.muted}>u</Tint>
+            <Tint color={theme.faint}> undo  ·  drag rows</Tint>
           </text>
         </box>
       </Show>

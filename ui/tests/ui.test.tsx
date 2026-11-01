@@ -11,7 +11,7 @@ import type { LogEntry } from "../src/lib/logs";
 import { applyTheme, themeId } from "../src/theme";
 
 function seed(emit: (message: BackendMessage) => void) {
-  emit({ type: "hello", protocol: 1, app: "PopMark", version: "1.1.2" });
+  emit({ type: "hello", protocol: 1, app: "PopMark", version: "1.2.0" });
   emit({
     type: "tools",
     tools: [
@@ -113,7 +113,7 @@ test("renders the queue and sends transport shortcuts", async () => {
     expect(frame).not.toContain("[F1]S");
     expect(frame).toContain("Upcoming Track");
     expect(frame).toContain("PLAYING");
-    expect(frame).toContain("v1.1.2");
+    expect(frame).toContain("v1.2.0");
     expect(frame).toContain("connected");
     expect(frame).toContain("0:42");
     expect(frame).toContain("3:00");

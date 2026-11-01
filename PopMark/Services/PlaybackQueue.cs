@@ -13,7 +13,9 @@ public sealed class PlaybackQueue
     private readonly MpvPlayer _mpv;
     private readonly Queue<Track> _pending = new();
     private readonly Stack<Track> _previous = new();
+    private readonly List<QueueSnapshot> _undo = new();
     private readonly object _syncRoot = new();
+    private const int MaxUndoDepth = 20;
     private Track? _current;
     private PlaybackStatus _status = PlaybackStatus.Stopped;
     private TimeSpan _positionOffset = TimeSpan.Zero;
@@ -36,6 +38,12 @@ public sealed class PlaybackQueue
     public async Task AddUrlAsync(string url, CancellationToken cancellationToken = default)
     {
         url = TargetInput.Normalize(url);
+        PlaybackStatus previousStatus;
+        lock (_syncRoot)
+        {
+            previousStatus = _status;
+        }
+
         SetStatus(PlaybackStatus.Loading);
 
         IReadOnlyList<Track> tracks;
@@ -45,21 +53,357 @@ public sealed class PlaybackQueue
         }
         catch
         {
-            SetStatus(_current is null ? PlaybackStatus.Stopped : PlaybackStatus.Playing);
+            SetStatus(_current is null
+                ? PlaybackStatus.Stopped
+                : previousStatus is PlaybackStatus.Playing or PlaybackStatus.Paused
+                    ? previousStatus
+                    : PlaybackStatus.Playing);
             throw;
         }
 
+        await AddTracksAsync(tracks, cancellationToken);
+    }
+
+    public Task<IReadOnlyList<Track>> SearchAsync(
+        string query,
+        int limit = 8,
+        CancellationToken cancellationToken = default) =>
+        _ytDlp.SearchAsync(query, limit, cancellationToken);
+
+    /// <summary>
+    /// Queues tracks, skipping URLs that are already in the playlist. Returns
+    /// the number of tracks that were added.
+    /// </summary>
+    public async Task<int> AddTracksAsync(
+        IReadOnlyList<Track> tracks,
+        CancellationToken cancellationToken = default)
+    {
+        var added = 0;
+        var skipped = 0;
+        var started = false;
+
         lock (_syncRoot)
         {
+            var keys = BuildTrackKeysLocked();
+            var accepted = new List<Track>();
+
             foreach (var track in tracks)
-                _pending.Enqueue(track);
+            {
+                if (string.IsNullOrWhiteSpace(track.Url))
+                    continue;
+
+                if (!keys.Add(TrackIdentity.Key(track.Url)))
+                {
+                    skipped++;
+                    continue;
+                }
+
+                accepted.Add(track);
+            }
+
+            if (accepted.Count > 0)
+            {
+                PushUndoLocked();
+                foreach (var track in accepted)
+                    _pending.Enqueue(track);
+                added = accepted.Count;
+            }
+            else if (_current is null)
+            {
+                _status = PlaybackStatus.Stopped;
+            }
         }
 
-        LastMessage = tracks.Count == 1
-            ? $"Added: {tracks[0].Title}"
-            : $"Added {tracks.Count} tracks.";
+        if (added == 0)
+        {
+            LastMessage = skipped > 0
+                ? "That track is already in the queue."
+                : "No playable tracks were found.";
+            NotifySnapshotChanged();
+            return 0;
+        }
 
-        await StartNextIfIdleAsync(cancellationToken);
+        if (CreateSnapshot().Current is null)
+        {
+            await StartNextIfIdleAsync(cancellationToken);
+            started = true;
+        }
+
+        LastMessage = skipped > 0
+            ? $"Added {added} track(s); skipped {skipped} duplicate(s)."
+            : $"Added {added} track(s).";
+
+        if (started && CreateSnapshot().Current is { } current)
+            LastMessage = $"{LastMessage} Now playing: {current.Title}";
+
+        NotifySnapshotChanged();
+        return added;
+    }
+
+    /// <summary>Replaces the playlist with the given tracks, optionally starting playback.</summary>
+    public async Task<int> ReplaceQueueAsync(
+        IReadOnlyList<Track> tracks,
+        bool play,
+        CancellationToken cancellationToken = default)
+    {
+        var accepted = new List<Track>();
+        var skipped = 0;
+
+        lock (_syncRoot)
+        {
+            PushUndoLocked();
+            _previous.Clear();
+            _pending.Clear();
+            _current = null;
+            _status = PlaybackStatus.Stopped;
+            ResetPositionLocked(startRunning: false);
+
+            var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var track in tracks)
+            {
+                if (string.IsNullOrWhiteSpace(track.Url))
+                    continue;
+
+                if (!keys.Add(TrackIdentity.Key(track.Url)))
+                {
+                    skipped++;
+                    continue;
+                }
+
+                accepted.Add(track);
+                _pending.Enqueue(track);
+            }
+        }
+
+        await _mpv.StopAsync(cancellationToken);
+
+        if (play)
+            await StartNextIfIdleAsync(cancellationToken);
+
+        LastMessage = accepted.Count == 0
+            ? "There are no tracks to queue."
+            : skipped > 0
+                ? $"Loaded {accepted.Count} track(s); skipped {skipped} duplicate(s)."
+                : $"Loaded {accepted.Count} track(s).";
+
+        if (play && CreateSnapshot().Current is { } current)
+            LastMessage = $"{LastMessage} Now playing: {current.Title}";
+
+        NotifySnapshotChanged();
+        return accepted.Count;
+    }
+
+    public IReadOnlyList<Track> GetPlaylist()
+    {
+        lock (_syncRoot)
+        {
+            return BuildPlaylistLocked();
+        }
+    }
+
+    public async Task RemoveAtAsync(int playlistIndex, CancellationToken cancellationToken = default)
+    {
+        Track? removed;
+        var stopPlayback = false;
+
+        lock (_syncRoot)
+        {
+            var playlist = BuildPlaylistLocked();
+            if (playlistIndex < 0 || playlistIndex >= playlist.Count)
+            {
+                LastMessage = "No track at that queue row.";
+                return;
+            }
+
+            removed = playlist[playlistIndex];
+            var currentIndex = _current is null ? -1 : _previous.Count;
+            PushUndoLocked();
+
+            if (playlistIndex == currentIndex)
+            {
+                _previous.Clear();
+                foreach (var track in playlist.Take(playlistIndex))
+                    _previous.Push(track);
+
+                _pending.Clear();
+                foreach (var track in playlist.Skip(playlistIndex + 1))
+                    _pending.Enqueue(track);
+
+                _current = null;
+                _status = PlaybackStatus.Stopped;
+                ResetPositionLocked(startRunning: false);
+                stopPlayback = true;
+            }
+            else if (playlistIndex < currentIndex)
+            {
+                var history = playlist.Take(currentIndex).ToList();
+                history.RemoveAt(playlistIndex);
+                _previous.Clear();
+                foreach (var track in history)
+                    _previous.Push(track);
+            }
+            else
+            {
+                var pending = playlist.Skip(currentIndex + 1).ToList();
+                pending.RemoveAt(playlistIndex - currentIndex - 1);
+                _pending.Clear();
+                foreach (var track in pending)
+                    _pending.Enqueue(track);
+            }
+
+            LastMessage = stopPlayback
+                ? $"Removed: {removed.Title}. Playback stopped."
+                : $"Removed: {removed.Title}";
+        }
+
+        if (stopPlayback)
+            await _mpv.StopAsync(cancellationToken);
+
+        NotifySnapshotChanged();
+    }
+
+    /// <summary>Moves an upcoming track to another upcoming row. History and the current track are fixed.</summary>
+    public void MovePending(int playlistIndex, int targetIndex)
+    {
+        lock (_syncRoot)
+        {
+            var playlist = BuildPlaylistLocked();
+            var currentIndex = _current is null ? -1 : _previous.Count;
+
+            if (playlistIndex <= currentIndex || targetIndex <= currentIndex)
+            {
+                LastMessage = "Only upcoming tracks can be reordered.";
+                return;
+            }
+
+            if (playlistIndex >= playlist.Count || targetIndex >= playlist.Count)
+            {
+                LastMessage = "No track at that queue row.";
+                return;
+            }
+
+            if (playlistIndex == targetIndex)
+                return;
+
+            var pending = playlist.Skip(currentIndex + 1).ToList();
+            var from = playlistIndex - currentIndex - 1;
+            var to = targetIndex - currentIndex - 1;
+            var track = pending[from];
+
+            PushUndoLocked();
+            pending.RemoveAt(from);
+            pending.Insert(to, track);
+            _pending.Clear();
+            foreach (var item in pending)
+                _pending.Enqueue(item);
+
+            LastMessage = $"Moved: {track.Title}";
+        }
+
+        NotifySnapshotChanged();
+    }
+
+    public void MoveToFrontOfPending(int playlistIndex)
+    {
+        lock (_syncRoot)
+        {
+            var playlist = BuildPlaylistLocked();
+            var currentIndex = _current is null ? -1 : _previous.Count;
+
+            if (playlistIndex <= currentIndex)
+            {
+                LastMessage = "Only an upcoming track can be moved to play next.";
+                return;
+            }
+
+            if (playlistIndex >= playlist.Count)
+            {
+                LastMessage = "No track at that queue row.";
+                return;
+            }
+
+            var pendingIndex = playlistIndex - currentIndex - 1;
+            if (pendingIndex == 0)
+            {
+                LastMessage = "That track is already next.";
+                return;
+            }
+
+            var pending = playlist.Skip(currentIndex + 1).ToList();
+            var track = pending[pendingIndex];
+
+            PushUndoLocked();
+            pending.RemoveAt(pendingIndex);
+            pending.Insert(0, track);
+            _pending.Clear();
+            foreach (var item in pending)
+                _pending.Enqueue(item);
+
+            LastMessage = $"Up next: {track.Title}";
+        }
+
+        NotifySnapshotChanged();
+    }
+
+    public async Task UndoAsync(CancellationToken cancellationToken = default)
+    {
+        QueueSnapshot? snapshot;
+        lock (_syncRoot)
+        {
+            if (_undo.Count == 0)
+            {
+                LastMessage = "Nothing to undo.";
+                return;
+            }
+
+            snapshot = _undo[^1];
+            _undo.RemoveAt(_undo.Count - 1);
+        }
+
+        var stopPlayback = false;
+        lock (_syncRoot)
+        {
+            var sameCurrent = _current is not null &&
+                              snapshot.Current is not null &&
+                              TrackIdentity.Same(_current.Url, snapshot.Current.Url);
+
+            if (sameCurrent)
+            {
+                _previous.Clear();
+                foreach (var track in snapshot.Previous)
+                    _previous.Push(track);
+
+                _pending.Clear();
+                foreach (var track in snapshot.Pending)
+                    _pending.Enqueue(track);
+            }
+            else
+            {
+                _previous.Clear();
+                _pending.Clear();
+
+                foreach (var track in snapshot.Previous)
+                    _pending.Enqueue(track);
+
+                if (snapshot.Current is not null)
+                    _pending.Enqueue(snapshot.Current);
+
+                foreach (var track in snapshot.Pending)
+                    _pending.Enqueue(track);
+
+                _current = null;
+                _status = PlaybackStatus.Stopped;
+                ResetPositionLocked(startRunning: false);
+                stopPlayback = true;
+            }
+        }
+
+        if (stopPlayback)
+            await _mpv.StopAsync(cancellationToken);
+
+        LastMessage = stopPlayback
+            ? "Undid the last queue change. Press play to resume."
+            : "Undid the last queue change.";
         NotifySnapshotChanged();
     }
 
@@ -67,6 +411,7 @@ public sealed class PlaybackQueue
     {
         lock (_syncRoot)
         {
+            _undo.Clear();
             _pending.Clear();
             _previous.Clear();
             _current = snapshot.Current;
@@ -399,6 +744,7 @@ public sealed class PlaybackQueue
                 return;
             }
 
+            PushUndoLocked();
             Shuffle(tracksToShuffle);
 
             _previous.Clear();
@@ -493,6 +839,9 @@ public sealed class PlaybackQueue
     {
         lock (_syncRoot)
         {
+            if (clearQueue && (_current is not null || _pending.Count > 0 || _previous.Count > 0))
+                PushUndoLocked();
+
             _current = null;
             _status = PlaybackStatus.Stopped;
             ResetPositionLocked(startRunning: false);
@@ -512,6 +861,9 @@ public sealed class PlaybackQueue
     {
         lock (_syncRoot)
         {
+            if (_current is not null || _pending.Count > 0 || _previous.Count > 0)
+                PushUndoLocked();
+
             _current = null;
             _pending.Clear();
             _previous.Clear();
@@ -768,6 +1120,38 @@ public sealed class PlaybackQueue
         playlist.AddRange(_pending);
         return playlist;
     }
+
+    private void PushUndoLocked()
+    {
+        _undo.Add(new QueueSnapshot(
+            _previous.Reverse().ToList(),
+            _current,
+            _pending.ToList()));
+
+        if (_undo.Count > MaxUndoDepth)
+            _undo.RemoveAt(0);
+    }
+
+    private HashSet<string> BuildTrackKeysLocked()
+    {
+        var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var track in _previous)
+            keys.Add(TrackIdentity.Key(track.Url));
+
+        if (_current is not null)
+            keys.Add(TrackIdentity.Key(_current.Url));
+
+        foreach (var track in _pending)
+            keys.Add(TrackIdentity.Key(track.Url));
+
+        return keys;
+    }
+
+    private sealed record QueueSnapshot(
+        List<Track> Previous,
+        Track? Current,
+        List<Track> Pending);
 
     private TimeSpan ResolveElapsedLocked()
     {

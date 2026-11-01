@@ -1,4 +1,5 @@
 using PopMark.Models;
+using PopMark.Services;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -55,6 +56,41 @@ internal sealed record BridgeQueueDto(
             snapshot.Current is null ? -1 : snapshot.Previous.Count,
             snapshot.Previous.Select(BridgeTrackDto.From).ToList(),
             snapshot.Pending.Select(BridgeTrackDto.From).ToList());
+}
+
+internal sealed record BridgeSearchResultsDto(
+    string Type,
+    string? Id,
+    string Query,
+    IReadOnlyList<BridgeTrackDto> Results)
+{
+    public static BridgeSearchResultsDto Create(
+        string? id,
+        string query,
+        IEnumerable<Track> tracks) =>
+        new("search-results", id, query, tracks.Select(BridgeTrackDto.From).ToList());
+}
+
+internal sealed record BridgeSavedQueueDto(
+    string Name,
+    int TrackCount,
+    DateTimeOffset SavedAtUtc);
+
+internal sealed record BridgeLibraryDto(
+    string Type,
+    IReadOnlyList<BridgeSavedQueueDto> Queues,
+    IReadOnlyList<BridgeTrackDto> Favorites)
+{
+    public static BridgeLibraryDto From(LibraryStore.LibrarySnapshot snapshot) =>
+        new(
+            "library",
+            snapshot.Queues
+                .Select(queue => new BridgeSavedQueueDto(
+                    queue.Name,
+                    queue.TrackCount,
+                    queue.SavedAtUtc))
+                .ToList(),
+            snapshot.Favorites.Select(BridgeTrackDto.From).ToList());
 }
 
 internal sealed record BridgeStateDto(
@@ -153,7 +189,11 @@ internal sealed record BridgeRequest(
     double? Seconds = null,
     double? Delta = null,
     int? Percent = null,
-    int? Index = null)
+    int? Index = null,
+    int? Limit = null,
+    int? To = null,
+    bool? Play = null,
+    BridgeTrackDto? Track = null)
 {
     public static bool TryParse(string line, out BridgeRequest? request, out string? error)
     {

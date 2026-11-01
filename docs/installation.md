@@ -20,7 +20,7 @@ package manager (`apt`, `dnf`, `pacman`, `apk`, `pkg`, or Homebrew).
 ## Portable build
 
 1. Open [Releases](https://github.com/markdanielaguinaldo/PopMark/releases) and download
-   `PopMark-1.1.2-OpenTUI-win-x64-portable.zip`.
+   `PopMark-1.2.0-OpenTUI-win-x64-portable.zip`.
 2. Extract it anywhere you can write, such as `%LOCALAPPDATA%\Programs\PopMark`.
 3. Run `PopMark.exe`.
 
@@ -72,7 +72,7 @@ For Linux, including an ARM64 phone:
 .\scripts\build-linux.ps1 -Runtime linux-x64     # ordinary Linux desktops
 ```
 
-On Linux itself use `./scripts/build-linux.sh 1.1.2 linux-arm64`. The resulting
+On Linux itself use `./scripts/build-linux.sh 1.2.0 linux-arm64`. The resulting
 `releases/*.tar.gz` is self-contained; `mpv` still comes from the system package
 manager.
 

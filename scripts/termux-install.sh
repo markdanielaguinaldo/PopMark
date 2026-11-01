@@ -7,7 +7,7 @@
 # Bionic libc directly.
 #
 # Usage:
-#   scripts/termux-install.sh /path/to/PopMark-1.1.2-OpenTUI-linux-arm64-portable.tar.gz
+#   scripts/termux-install.sh /path/to/PopMark-1.2.0-OpenTUI-linux-arm64-portable.tar.gz
 #
 # With no argument, the newest matching tarball in ~/storage/downloads or ~ is used.
 

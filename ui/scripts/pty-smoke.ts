@@ -40,7 +40,7 @@ const connected = await waitFor(
   () =>
     output.includes("backend connected") ||
     output.includes("ONLINE") ||
-    output.includes("v1.1.2"),
+    output.includes("v1.2.0"),
 );
 const startup = output;
 console.log(`online-after=${onlineAt ? onlineAt - startedAt : -1}ms`);

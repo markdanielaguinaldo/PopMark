@@ -9,7 +9,7 @@
 
 set -euo pipefail
 
-VERSION="${1:-1.1.2}"
+VERSION="${1:-1.2.0}"
 RUNTIME="${2:-linux-arm64}"
 
 case "$RUNTIME" in

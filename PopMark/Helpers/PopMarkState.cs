@@ -20,6 +20,10 @@ public static class PopMarkState
 
     public static string ThemeFile => Path.Combine(Root, "theme.json");
 
+    public static string LibraryFile => Path.Combine(Root, "library.json");
+
+    public static string ExportsDirectory => Path.Combine(Root, "exports");
+
     public static string LogsDirectory => Path.Combine(Root, "logs");
 
     public static bool IsWindows => OperatingSystem.IsWindows();

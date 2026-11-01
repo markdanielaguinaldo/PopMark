@@ -57,6 +57,7 @@ export function Sidebar(props: {
   compact?: boolean;
   onManageTools: () => void;
   onHelp: () => void;
+  onLibrary: () => void;
   onSplash: () => void;
   onLogs: () => void;
 }) {
@@ -156,6 +157,7 @@ export function Sidebar(props: {
             <ShortcutRow keys="[F3]" label="focus view" onPress={props.onSplash} />
             <ShortcutRow keys="[F4]" label="diagnostics" onPress={props.onLogs} />
             <ShortcutRow keys="[F5]" label="cycle theme" />
+            <ShortcutRow keys="[F6]" label="saved library" onPress={props.onLibrary} />
           </ShortcutGroup>
 
           <Show when={!props.compact} fallback={<box height={0} />}>
@@ -186,12 +188,22 @@ export function Sidebar(props: {
               <text selectable={false} wrapMode="none">
                 <Tint color={theme.muted}>↑↓</Tint>
                 <Tint color={theme.faint}> move · </Tint>
+                <Tint color={theme.muted}>⇧↑↓</Tint>
+                <Tint color={theme.faint}> reorder · </Tint>
+                <Tint color={theme.muted}>d/u</Tint>
+                <Tint color={theme.faint}> rm/undo</Tint>
+              </text>
+              <text selectable={false} wrapMode="none">
                 <Tint color={theme.muted}>↵</Tint>
                 <Tint color={theme.faint}> play · </Tint>
                 <Tint color={theme.accent} bold>
                   a
                 </Tint>
-                <Tint color={theme.faint}> add</Tint>
+                <Tint color={theme.faint}> add · </Tint>
+                <Tint color={theme.accent} bold>
+                  f
+                </Tint>
+                <Tint color={theme.faint}> favorite</Tint>
               </text>
             </box>
           </Show>

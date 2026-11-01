@@ -35,6 +35,8 @@ function isLongRunning(message: OutboundMessage): boolean {
 
   if (message.type === "add") return true;
 
+  if (message.type === "search") return true;
+
   if (message.type === "input") {
     const text = message.text.trim();
     return (

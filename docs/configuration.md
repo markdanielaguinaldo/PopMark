@@ -79,6 +79,8 @@ Everything PopMark remembers lives under `%LOCALAPPDATA%\PopMark` on Windows, or
 | File | Contents |
 | --- | --- |
 | `queue.json` | Current track, previous tracks, upcoming tracks, and volume. |
+| `library.json` | Named saved queues and favorite tracks. |
+| `exports\` | Default folder for exported `.m3u` playlists. |
 | `tools.json` | Pinned `yt-dlp` and `mpv` paths. |
 | `sessions.json` | Live `mpv` process ids and IPC paths, used for crash cleanup. |
 | `theme.json` | Active OpenTUI color theme. |

@@ -49,6 +49,25 @@ export type ToolsMessage = {
   overrideFile: string;
 };
 
+export type SearchResultsMessage = {
+  type: "search-results";
+  id?: string;
+  query: string;
+  results: Track[];
+};
+
+export type SavedQueueInfo = {
+  name: string;
+  trackCount: number;
+  savedAtUtc: string;
+};
+
+export type LibraryMessage = {
+  type: "library";
+  queues: SavedQueueInfo[];
+  favorites: Track[];
+};
+
 export type BusyMessage = {
   type: "busy";
   busy: boolean;
@@ -86,17 +105,43 @@ export type BackendMessage =
   | QueueMessage
   | StateMessage
   | ToolsMessage
+  | SearchResultsMessage
+  | LibraryMessage
   | BusyMessage
   | LogMessage
   | AckMessage
   | ErrorMessage
   | ByeMessage;
 
+export type LibraryAction =
+  | "list"
+  | "save"
+  | "load"
+  | "delete"
+  | "export"
+  | "import"
+  | "favorite";
+
 export type OutboundMessage =
   | { type: "ping"; id?: string }
   | { type: "command"; id?: string; name: string }
   | { type: "input"; id?: string; text: string }
   | { type: "add"; id?: string; target: string }
+  | { type: "add-track"; id?: string; track: Track }
+  | { type: "search"; id?: string; text: string; limit?: number }
+  | { type: "remove-track"; id?: string; index: number }
+  | { type: "move-track"; id?: string; index: number; to: number }
+  | { type: "play-next"; id?: string; index: number }
+  | { type: "undo"; id?: string }
+  | {
+      type: "library";
+      id?: string;
+      action?: LibraryAction;
+      name?: string;
+      path?: string;
+      track?: Track;
+      play?: boolean;
+    }
   | { type: "seek"; id?: string; seconds?: number; delta?: number }
   | { type: "volume"; id?: string; percent?: number; delta?: number }
   | { type: "play-index"; id?: string; index: number }
@@ -176,6 +221,16 @@ function parseTool(value: unknown): ToolInfo | null {
   };
 }
 
+function parseSavedQueue(value: unknown): SavedQueueInfo | null {
+  if (!isRecord(value)) return null;
+
+  const name = stringField(value, "name");
+  const savedAtUtc = stringField(value, "savedAtUtc");
+  if (name === null || savedAtUtc === null || !isFiniteNumber(value.trackCount)) return null;
+
+  return { name, trackCount: value.trackCount, savedAtUtc };
+}
+
 function parseMessage(value: Record<string, unknown>): BackendMessage | null {
   switch (value.type) {
     case "hello": {
@@ -250,6 +305,36 @@ function parseMessage(value: Record<string, unknown>): BackendMessage | null {
       if (toolRoot === null || overrideFile === null) return null;
 
       return { type: "tools", tools, toolRoot, overrideFile };
+    }
+
+    case "search-results": {
+      const query = stringField(value, "query");
+      const results = parseTrackList(value.results);
+      if (query === null || results === null) return null;
+      if (value.id !== undefined && typeof value.id !== "string") return null;
+
+      return {
+        type: "search-results",
+        query,
+        results,
+        ...(value.id === undefined ? {} : { id: value.id }),
+      };
+    }
+
+    case "library": {
+      if (!Array.isArray(value.queues)) return null;
+
+      const queues: SavedQueueInfo[] = [];
+      for (const entry of value.queues) {
+        const queue = parseSavedQueue(entry);
+        if (!queue) return null;
+        queues.push(queue);
+      }
+
+      const favorites = parseTrackList(value.favorites);
+      if (!favorites) return null;
+
+      return { type: "library", queues, favorites };
     }
 
     case "busy": {

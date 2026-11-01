@@ -1,6 +1,6 @@
 {
   "name": "popmark-ui",
-  "version": "0.1.0",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
   "description": "OpenTUI frontend for the PopMark playback backend",

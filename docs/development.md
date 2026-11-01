@@ -121,7 +121,7 @@ To produce a redistributable Linux package (bundled Bun, OpenTUI native library,
 ```
 
 ```bash
-./scripts/build-linux.sh 1.1.2 linux-arm64       # from Linux / proot
+./scripts/build-linux.sh 1.2.0 linux-arm64       # from Linux / proot
 ```
 
 `linux-arm64` is the Android/Termux target. The publish enables
@@ -213,7 +213,7 @@ can bind `Console.In` to that console instead of the redirected pipe.
 All messages are camelCase JSON.
 
 ```json
-{"type":"hello","protocol":1,"app":"PopMark","version":"1.1.2"}
+{"type":"hello","protocol":1,"app":"PopMark","version":"1.2.0"}
 ```
 
 ```json

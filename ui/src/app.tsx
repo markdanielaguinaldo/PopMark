@@ -19,18 +19,26 @@ import type { BridgeClient, BridgeEvents } from "./bridge/client";
 import type {
   BackendMessage,
   PlaybackStatus,
+  SavedQueueInfo,
   ToolInfo,
   Track,
 } from "./bridge/protocol";
 import { Footer } from "./components/Footer";
 import { Header } from "./components/Header";
-import { HelpDialog, LogsDialog, ToolsDialog } from "./components/Dialogs";
+import {
+  HelpDialog,
+  LibraryDialog,
+  LogsDialog,
+  SearchDialog,
+  ToolsDialog,
+} from "./components/Dialogs";
 import { NowPlaying } from "./components/NowPlaying";
 import { QueuePanel } from "./components/QueuePanel";
 import { Sidebar } from "./components/Sidebar";
 import { Splash } from "./components/Splash";
 import { ActionButton, Tint } from "./components/Widgets";
 import { clamp } from "./lib/format";
+import { buildLibraryEntries } from "./lib/library";
 import { appendLog, makeLogEntry, type LogEntry } from "./lib/logs";
 import { liveElapsedSeconds, safeDuration } from "./lib/playback";
 import {
@@ -44,7 +52,7 @@ import {
 } from "./lib/playlist";
 import { theme, cycleTheme, themeLabel } from "./theme";
 
-type Dialog = "help" | "tools" | "logs" | null;
+type Dialog = "help" | "tools" | "logs" | "search" | "library" | null;
 type InputMode = "command" | "navigation" | "focus" | "modal";
 
 type AppStore = {
@@ -68,6 +76,14 @@ type AppStore = {
     message: string;
     busy: boolean;
     busyLabel?: string;
+  };
+  search: {
+    query: string;
+    results: Track[];
+  };
+  library: {
+    queues: SavedQueueInfo[];
+    favorites: Track[];
   };
   tools: ToolInfo[];
   toolRoot?: string;
@@ -107,6 +123,14 @@ export function App(props: {
       message: "Starting PopMark...",
       busy: false,
     },
+    search: {
+      query: "",
+      results: [],
+    },
+    library: {
+      queues: [],
+      favorites: [],
+    },
     tools: [],
   });
 
@@ -114,6 +138,8 @@ export function App(props: {
   const [splash, setSplash] = createSignal(false);
   const [mode, setMode] = createSignal<InputMode>("command");
   const [selectedIndex, setSelectedIndex] = createSignal(-1);
+  const [searchSelected, setSearchSelected] = createSignal(0);
+  const [librarySelected, setLibrarySelected] = createSignal(0);
   const [clock, setClock] = createSignal(Date.now());
   const [themeToast, setThemeToast] = createSignal<string>();
 
@@ -233,6 +259,26 @@ export function App(props: {
         setStore("error", undefined);
         break;
 
+      case "search-results":
+        setStore("search", {
+          query: message.query,
+          results: message.results,
+        });
+        setSearchSelected(0);
+        if (message.results.length > 0) {
+          openDialog("search");
+        } else {
+          setStore("playback", "message", `No results for "${message.query}".`);
+        }
+        break;
+
+      case "library":
+        setStore("library", {
+          queues: message.queues,
+          favorites: message.favorites,
+        });
+        break;
+
       case "busy":
         setStore("playback", "busy", message.busy);
         setStore("playback", "busyLabel", message.label);
@@ -271,6 +317,14 @@ export function App(props: {
       pending: store.queue.pending,
     }),
   );
+
+  const libraryEntries = createMemo(() =>
+    buildLibraryEntries(store.library.queues, store.library.favorites),
+  );
+
+  const selectedEntry = createMemo(() => playlist()[selectedIndex()]);
+  const canPlayNext = () => selectedEntry()?.kind === "pending";
+  const canRemove = () => selectedEntry() !== undefined;
 
   const duration = createMemo(
     () =>
@@ -441,6 +495,140 @@ export function App(props: {
     client.send({ type: "play-index", index });
   }
 
+  function showFailure(error: unknown) {
+    const text = error instanceof Error ? error.message : String(error);
+    setStore("playback", "message", text);
+    setStore("error", text);
+  }
+
+  function addTrack(track: Track) {
+    client.send({ type: "add-track", track });
+  }
+
+  function runSearch(query: string) {
+    const value = query.trim();
+    if (!value) {
+      setStore("playback", "message", "Usage: search <query>.");
+      return;
+    }
+
+    void client
+      .request({ type: "search", text: value, limit: 8 })
+      .catch(showFailure);
+  }
+
+  function addSearchResult(index: number) {
+    const track = store.search.results[index];
+    if (!track) return;
+    addTrack(track);
+    closeDialog();
+  }
+
+  async function refreshLibrary() {
+    try {
+      await client.request({ type: "library", action: "list" });
+    } catch (error) {
+      showFailure(error);
+    }
+  }
+
+  function openLibrary() {
+    openDialog("library");
+    setLibrarySelected(0);
+    void refreshLibrary();
+  }
+
+  function activateLibraryEntry(index: number) {
+    const entry = libraryEntries()[index];
+    if (!entry) return;
+
+    if (entry.kind === "favorite") {
+      addTrack(entry.track);
+      closeDialog();
+      return;
+    }
+
+    void client
+      .request({ type: "library", action: "load", name: entry.name, play: true })
+      .then(() => closeDialog())
+      .catch(showFailure);
+  }
+
+  function deleteLibraryEntry(index: number) {
+    const entry = libraryEntries()[index];
+    if (!entry || entry.kind !== "queue") return;
+
+    void client
+      .request({ type: "library", action: "delete", name: entry.name })
+      .catch(showFailure);
+  }
+
+  function exportLibraryEntry(index: number) {
+    const entry = libraryEntries()[index];
+    if (!entry || entry.kind !== "queue") return;
+
+    void client
+      .request({ type: "library", action: "export", name: entry.name })
+      .catch(showFailure);
+  }
+
+  function toggleFavorite(track?: Track) {
+    void client
+      .request({
+        type: "library",
+        action: "favorite",
+        ...(track ? { track } : {}),
+      })
+      .catch(showFailure);
+  }
+
+  function removeSelected() {
+    const entry = selectedEntry();
+    if (!entry) {
+      setStore("playback", "message", "Select a queue row first.");
+      return;
+    }
+
+    client.send({ type: "remove-track", index: entry.index });
+  }
+
+  function playNextSelected() {
+    const entry = selectedEntry();
+    if (!entry || entry.kind !== "pending") {
+      setStore("playback", "message", "Select an upcoming track first.");
+      return;
+    }
+
+    client.send({ type: "play-next", index: entry.index });
+  }
+
+  function moveSelected(delta: number) {
+    const entry = selectedEntry();
+    if (!entry || entry.kind !== "pending") {
+      setStore("playback", "message", "Only upcoming tracks can be reordered.");
+      return;
+    }
+
+    const target = entry.index + delta;
+    if (target <= store.queue.currentIndex || target >= playlist().length) return;
+
+    client.send({ type: "move-track", index: entry.index, to: target });
+    setSelectedIndex(target);
+  }
+
+  function moveEntry(from: number, to: number) {
+    const entries = playlist();
+    if (!entries[from] || !entries[to]) return;
+    if (entries[from].kind !== "pending" || entries[to].kind !== "pending") return;
+
+    client.send({ type: "move-track", index: from, to });
+    setSelectedIndex(to);
+  }
+
+  function undoQueue() {
+    sendCommand("undo");
+  }
+
   function submit(rawValue: string) {
     const value = rawValue.trim();
     if (!value) return;
@@ -461,6 +649,20 @@ export function App(props: {
 
     if (rest.length === 0 && ["logs", "diagnostics", "diag"].includes(lowered)) {
       openLogs();
+      return;
+    }
+
+    if (rest.length === 0 && ["library", "queues", "favorites"].includes(lowered)) {
+      openLibrary();
+      return;
+    }
+
+    if (["search", "find"].includes(lowered)) {
+      if (rest.length === 0) {
+        setStore("playback", "message", "Usage: search <query>.");
+        return;
+      }
+      runSearch(rest.join(" "));
       return;
     }
 
@@ -561,7 +763,24 @@ export function App(props: {
       return;
     }
 
+    if (key.name === "f6") {
+      key.preventDefault();
+      if (mode() === "modal" && dialog() === "library") closeDialog();
+      else openLibrary();
+      return;
+    }
+
     if (mode() === "modal") {
+      if (dialog() === "search") {
+        handleSearchDialogKey(key);
+        return;
+      }
+
+      if (dialog() === "library") {
+        handleLibraryDialogKey(key);
+        return;
+      }
+
       if (key.name === "escape" || key.name === "return" ||
           (key.name === "f1" && dialog() === "help") ||
           (key.name === "f2" && dialog() === "tools"))
@@ -709,6 +928,65 @@ export function App(props: {
     return false;
   }
 
+  function handleSearchDialogKey(key: import("@opentui/core").KeyEvent) {
+    const count = store.search.results.length;
+
+    switch (key.name) {
+      case "escape":
+        key.preventDefault();
+        closeDialog();
+        return;
+      case "up":
+      case "k":
+        key.preventDefault();
+        setSearchSelected((index) => moveSelection(index, -1, count));
+        return;
+      case "down":
+      case "j":
+        key.preventDefault();
+        setSearchSelected((index) => moveSelection(index, 1, count));
+        return;
+      case "return":
+        key.preventDefault();
+        addSearchResult(searchSelected());
+        return;
+    }
+  }
+
+  function handleLibraryDialogKey(key: import("@opentui/core").KeyEvent) {
+    const count = libraryEntries().length;
+
+    switch (key.name) {
+      case "escape":
+        key.preventDefault();
+        closeDialog();
+        return;
+      case "up":
+      case "k":
+        key.preventDefault();
+        setLibrarySelected((index) => moveSelection(index, -1, count));
+        return;
+      case "down":
+      case "j":
+        key.preventDefault();
+        setLibrarySelected((index) => moveSelection(index, 1, count));
+        return;
+      case "return":
+        key.preventDefault();
+        activateLibraryEntry(librarySelected());
+        return;
+      case "x":
+      case "delete":
+        key.preventDefault();
+        deleteLibraryEntry(librarySelected());
+        return;
+      case "e":
+        key.preventDefault();
+        exportLibraryEntry(librarySelected());
+        return;
+    }
+  }
+
   function handleNavigationKey(key: import("@opentui/core").KeyEvent) {
     const entries = playlist();
 
@@ -721,7 +999,8 @@ export function App(props: {
         return;
       case "n":
         key.preventDefault();
-        nextTrack();
+        if (key.shift) playNextSelected();
+        else nextTrack();
         return;
       case "p":
         key.preventDefault();
@@ -730,6 +1009,19 @@ export function App(props: {
       case "s":
         key.preventDefault();
         shuffle();
+        return;
+      case "f":
+        key.preventDefault();
+        toggleFavorite(selectedEntry()?.track ?? store.queue.current);
+        return;
+      case "d":
+      case "delete":
+        key.preventDefault();
+        removeSelected();
+        return;
+      case "u":
+        key.preventDefault();
+        undoQueue();
         return;
       case "?":
         key.preventDefault();
@@ -746,12 +1038,14 @@ export function App(props: {
       case "up":
       case "k":
         key.preventDefault();
-        setSelectedIndex((index) => moveSelection(index, -1, entries.length));
+        if (key.shift) moveSelected(-1);
+        else setSelectedIndex((index) => moveSelection(index, -1, entries.length));
         return;
       case "down":
       case "j":
         key.preventDefault();
-        setSelectedIndex((index) => moveSelection(index, 1, entries.length));
+        if (key.shift) moveSelected(1);
+        else setSelectedIndex((index) => moveSelection(index, 1, entries.length));
         return;
       case "home":
         key.preventDefault();
@@ -879,7 +1173,14 @@ export function App(props: {
               compact={short() || compact()}
               tiny={tiny()}
               dense={dense()}
+              canRemove={canRemove()}
+              canPlayNext={canPlayNext()}
               onPlay={playIndex}
+              onSelect={setSelectedIndex}
+              onMove={moveEntry}
+              onPlayNext={playNextSelected}
+              onRemove={removeSelected}
+              onUndo={undoQueue}
               onShuffle={shuffle}
               onClear={clearQueue}
               onFocusInput={focusInput}
@@ -892,6 +1193,7 @@ export function App(props: {
               compact={short()}
               onManageTools={openTools}
               onHelp={openHelp}
+              onLibrary={openLibrary}
               onSplash={openFocus}
               onLogs={openLogs}
             />
@@ -912,6 +1214,7 @@ export function App(props: {
         onOpenTools={openTools}
         onOpenFocus={openFocus}
         onOpenLogs={openLogs}
+        onOpenLibrary={openLibrary}
         onCycleTheme={() => changeTheme(1)}
         onQuit={() => void quit()}
       />
@@ -958,6 +1261,29 @@ export function App(props: {
 
       <Show when={dialog() === "logs"} fallback={<box height={0} />}>
         <LogsDialog logs={store.logs} onClose={closeDialog} narrow={narrow()} />
+      </Show>
+
+      <Show when={dialog() === "search"} fallback={<box height={0} />}>
+        <SearchDialog
+          query={store.search.query}
+          results={store.search.results}
+          selectedIndex={searchSelected()}
+          narrow={narrow()}
+          onSelect={addSearchResult}
+          onClose={closeDialog}
+        />
+      </Show>
+
+      <Show when={dialog() === "library"} fallback={<box height={0} />}>
+        <LibraryDialog
+          entries={libraryEntries()}
+          selectedIndex={librarySelected()}
+          narrow={narrow()}
+          onActivate={activateLibraryEntry}
+          onDelete={() => deleteLibraryEntry(librarySelected())}
+          onExport={() => exportLibraryEntry(librarySelected())}
+          onClose={closeDialog}
+        />
       </Show>
 
       <Show when={themeToast() !== undefined} fallback={<box height={0} />}>

@@ -115,6 +115,9 @@ test("renders the queue and sends transport shortcuts", async () => {
     expect(frame).toContain("PLAYING");
     expect(frame).toContain("v1.2.0");
     expect(frame).toContain("connected");
+    expect(frame).toContain("commands");
+    expect(frame).toContain("saved library");
+    expect(frame).toContain("NAVIGATION");
     expect(frame).toContain("0:42");
     expect(frame).toContain("3:00");
 
@@ -208,6 +211,32 @@ test("renders the queue and sends transport shortcuts", async () => {
     expect((draggedSeek as { seconds: number }).seconds).toBeGreaterThan(110);
   } finally {
     await setup.dispose();
+  }
+});
+
+test("sidebar shortcuts stay readable on short terminals", async () => {
+  for (const [width, height] of [[100, 30], [110, 32]] as const) {
+    const fake = fakeBackend();
+    const setup = await testRender(() => <App createClient={fake.factory} />, {
+      width,
+      height,
+    });
+
+    try {
+      await setup.renderOnce();
+      await setup.flush();
+      const frame = setup.captureCharFrame();
+
+      expect(frame).toContain("[F1]");
+      expect(frame).toContain("commands");
+      expect(frame).toContain("[F6]");
+      expect(frame).toContain("saved library");
+      expect(frame).not.toContain("command0help");
+      expect(frame).not.toContain("amovel");
+      expect(frame).not.toContain("nreordera");
+    } finally {
+      await setup.dispose();
+    }
   }
 });
 

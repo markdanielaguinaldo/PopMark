@@ -1157,7 +1157,7 @@ export function App(props: {
               message={store.playback.message}
               busy={store.playback.busy}
               busyLabel={store.playback.busyLabel}
-              columns={dimensions().width - (dense() ? 4 : narrow() ? 6 : 39)}
+              columns={dimensions().width - (dense() ? 4 : narrow() ? 6 : 41)}
               onToggle={togglePlayback}
               onNext={nextTrack}
               onPrevious={previousTrack}

@@ -1,5 +1,6 @@
 import { TextAttributes } from "@opentui/core";
-import { For, Show, type JSX } from "solid-js";
+import { useTerminalDimensions } from "@opentui/solid";
+import { For, Show } from "solid-js";
 import type { ToolInfo } from "../bridge/protocol";
 import { basename } from "../lib/format";
 import { theme } from "../theme";
@@ -20,34 +21,14 @@ function ShortcutRow(props: { keys: string; label: string; onPress?: () => void 
           : undefined
       }
     >
-      <box width={10} height={1} flexShrink={0} backgroundColor={theme.surface}>
-        <text fg={theme.accent} selectable={false} wrapMode="none" width={10}>
-          {props.keys.padEnd(10, " ")}
+      <box width={9} height={1} flexShrink={0} backgroundColor={theme.surface}>
+        <text fg={theme.accent} selectable={false} wrapMode="none" width={9}>
+          {props.keys.padEnd(9, " ")}
         </text>
       </box>
       <text fg={theme.textSoft} selectable={false} wrapMode="none" truncate flexGrow={1} minWidth={0}>
         {props.label}
       </text>
-    </box>
-  );
-}
-
-function ShortcutGroup(props: {
-  label: string;
-  tone: string;
-  children: JSX.Element;
-}) {
-  return (
-    <box flexDirection="column" gap={0}>
-      <text
-        fg={props.tone}
-        attributes={TextAttributes.BOLD}
-        selectable={false}
-        wrapMode="none"
-      >
-        {props.label}
-      </text>
-      {props.children}
     </box>
   );
 }
@@ -62,9 +43,12 @@ export function Sidebar(props: {
   onLogs: () => void;
 }) {
   const ready = () => props.tools.filter((tool) => tool.runnable).length;
+  const dimensions = useTerminalDimensions();
+  const tight = () => props.compact || dimensions().height < 34;
+  const roomy = () => !props.compact && dimensions().height >= 40;
 
   return (
-    <box flexDirection="column" width={32} flexShrink={0} gap={1}>
+    <box flexDirection="column" width={34} flexShrink={0} gap={1}>
       <Panel title="TOOLS" flexShrink={0}>
         <box flexDirection="row" justifyContent="space-between" height={1}>
           <text
@@ -142,31 +126,28 @@ export function Sidebar(props: {
 
       <Panel title="SHORTCUTS" flexGrow={1} minHeight={12} padding={1}>
         <box flexDirection="column" gap={0}>
-          <ShortcutGroup label="PLAYBACK" tone={theme.accent}>
-            <ShortcutRow keys="[ctrl+p]" label="play / pause" />
-            <ShortcutRow keys="[ctrl+→]" label="next track" />
-            <ShortcutRow keys="[ctrl+←]" label="previous" />
+          <ShortcutRow keys="[ctrl+p]" label="play / pause" />
+          <ShortcutRow keys="[ctrl+→]" label="next track" />
+          <ShortcutRow keys="[ctrl+←]" label="previous" />
+          <Show when={!tight()} fallback={<box height={0} />}>
             <ShortcutRow keys="[ctrl+↑↓]" label="volume" />
             <ShortcutRow keys="[alt+←→]" label="seek ±10s" />
-          </ShortcutGroup>
+          </Show>
 
           <box height={1} />
 
-          <ShortcutGroup label="VIEWS" tone={theme.highlight}>
-            <ShortcutRow keys="[F1]" label="command help" onPress={props.onHelp} />
-            <ShortcutRow keys="[F3]" label="focus view" onPress={props.onSplash} />
-            <ShortcutRow keys="[F4]" label="diagnostics" onPress={props.onLogs} />
-            <ShortcutRow keys="[F5]" label="cycle theme" />
-            <ShortcutRow keys="[F6]" label="saved library" onPress={props.onLibrary} />
-          </ShortcutGroup>
+          <ShortcutRow keys="[F1]" label="commands" onPress={props.onHelp} />
+          <ShortcutRow keys="[F3]" label="focus view" onPress={props.onSplash} />
+          <ShortcutRow keys="[F4]" label="diagnostics" onPress={props.onLogs} />
+          <ShortcutRow keys="[F5]" label="cycle theme" />
+          <ShortcutRow keys="[F6]" label="saved library" onPress={props.onLibrary} />
 
-          <Show when={!props.compact} fallback={<box height={0} />}>
-            <box flexGrow={1} minHeight={0} />
-            <box flexDirection="column" gap={0}>
-              <text fg={theme.border} selectable={false} wrapMode="none">
-                ───────────────────────────
-              </text>
+          <Show when={roomy()} fallback={<box height={0} />}>
+            <box flexDirection="column" gap={0} flexShrink={0}>
               <box height={1} />
+              <text fg={theme.border} selectable={false} wrapMode="none">
+                {"─".repeat(30)}
+              </text>
               <text
                 fg={theme.dim}
                 attributes={TextAttributes.BOLD}
@@ -187,23 +168,23 @@ export function Sidebar(props: {
               </text>
               <text selectable={false} wrapMode="none">
                 <Tint color={theme.muted}>↑↓</Tint>
-                <Tint color={theme.faint}> move · </Tint>
+                <Tint color={theme.faint}> select · </Tint>
                 <Tint color={theme.muted}>⇧↑↓</Tint>
-                <Tint color={theme.faint}> reorder · </Tint>
-                <Tint color={theme.muted}>d/u</Tint>
-                <Tint color={theme.faint}> rm/undo</Tint>
+                <Tint color={theme.faint}> reorder</Tint>
               </text>
               <text selectable={false} wrapMode="none">
                 <Tint color={theme.muted}>↵</Tint>
                 <Tint color={theme.faint}> play · </Tint>
-                <Tint color={theme.accent} bold>
-                  a
-                </Tint>
-                <Tint color={theme.faint}> add · </Tint>
-                <Tint color={theme.accent} bold>
-                  f
-                </Tint>
-                <Tint color={theme.faint}> favorite</Tint>
+                <Tint color={theme.muted}>d</Tint>
+                <Tint color={theme.faint}> remove</Tint>
+              </text>
+              <text selectable={false} wrapMode="none">
+                <Tint color={theme.muted}>u</Tint>
+                <Tint color={theme.faint}> undo · </Tint>
+                <Tint color={theme.muted}>f</Tint>
+                <Tint color={theme.faint}> favorite · </Tint>
+                <Tint color={theme.muted}>a</Tint>
+                <Tint color={theme.faint}> add</Tint>
               </text>
             </box>
           </Show>

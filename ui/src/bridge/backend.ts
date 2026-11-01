@@ -55,7 +55,7 @@ function dotnetCommand(): string {
 
 /**
  * Locates the built C# backend. An explicit POPMARK_BACKEND wins, which lets
- * published installs or tests point at a specific binary.
+ * published installs and tests point at a specific binary.
  */
 export function resolveBackend(): BackendLaunch {
   const override = process.env.POPMARK_BACKEND?.trim();

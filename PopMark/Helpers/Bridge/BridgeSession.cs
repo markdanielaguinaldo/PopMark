@@ -7,8 +7,8 @@ using System.Threading.Channels;
 namespace PopMark.Helpers.Bridge;
 
 /// <summary>
-/// Owns the backend half of the OpenTUI bridge: JSON state out on stdout,
-/// structured JSON commands in on stdin. Playback itself stays in <see cref="PlaybackQueue"/>.
+/// Backend half of the OpenTUI bridge: JSON state out on stdout, JSON commands in
+/// on stdin. Playback stays in <see cref="PlaybackQueue"/>.
 /// </summary>
 internal sealed class BridgeSession
 {

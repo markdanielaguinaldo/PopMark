@@ -225,8 +225,8 @@ function pickRandomPaletteId(exclude?: PaletteId): PaletteId {
 }
 
 function themeStatePath(): string {
-  // POPMARK_HOME is the shared override used by the C# backend and the Termux
-  // launcher. Otherwise match the backend: %LOCALAPPDATA% on Windows, XDG on Unix.
+  // POPMARK_HOME is shared with the C# backend. Otherwise match its defaults:
+  // %LOCALAPPDATA% on Windows, XDG on Unix.
   const override = expandHome(process.env.POPMARK_HOME?.trim());
   if (override) return resolve(override, "theme.json");
 
@@ -290,7 +290,7 @@ setActivePaletteId(initialPaletteId);
 
 /**
  * Reactive palette. Components read `theme.accent` in JSX, so assigning a new
- * palette retints the whole interface without remounting the app.
+ * palette retints the interface without remounting the app.
  */
 export const theme = createMutable<Theme>({ ...palettes[initialPaletteId] });
 

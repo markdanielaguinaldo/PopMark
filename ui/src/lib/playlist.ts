@@ -51,9 +51,8 @@ export function moveSelection(
 }
 
 /**
- * Keeps the user's queue selection stable while background updates arrive.
- * Follow the current track only when it actually changed; otherwise preserve
- * the selected row and clamp it if the queue shrank.
+ * Keeps the queue selection stable while background updates arrive. Follow the
+ * current track only when it actually changed; otherwise clamp the selected row.
  */
 export function followCurrentSelection(
   currentIndex: number,

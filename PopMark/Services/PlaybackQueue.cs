@@ -565,9 +565,8 @@ public sealed class PlaybackQueue
     }
 
     /// <summary>
-    /// Pulls the authoritative position (and, when yt-dlp did not know it, the
-    /// duration) from mpv. Called by the bridge timer while playback is active.
-    /// Any IPC failure leaves the last known position untouched.
+    /// Pulls the authoritative position (and sometimes duration) from mpv. IPC
+    /// failures leave the last known position alone.
     /// </summary>
     public async Task RefreshPositionAsync(CancellationToken cancellationToken = default)
     {

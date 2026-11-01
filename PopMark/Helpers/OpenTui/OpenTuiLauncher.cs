@@ -5,9 +5,8 @@ using System.Text;
 namespace PopMark.Helpers.OpenTui;
 
 /// <summary>
-/// Launches the OpenTUI frontend as the default interactive experience.
-/// The C# process stays the playback backend; the frontend starts
-/// <c>PopMark --bridge</c> as its own child.
+/// Starts the OpenTUI frontend and waits for it. The frontend owns the screen;
+/// this process only supervises it and restores the terminal on the way out.
 /// </summary>
 internal static class OpenTuiLauncher
 {
@@ -125,11 +124,7 @@ internal static class OpenTuiLauncher
         }
     }
 
-    /// <summary>
-    /// Best-effort reset for terminals left in OpenTUI's raw/alternate-screen mode.
-    /// Writing these on a clean exit is harmless and keeps a crashed session from
-    /// spilling mouse reports into the shell prompt.
-    /// </summary>
+    /// <summary>Resets raw mode, the alternate screen, and mouse reporting after a crash.</summary>
     private static void RestoreTerminal()
     {
         try

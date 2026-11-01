@@ -38,7 +38,7 @@ public sealed class DependencyInstaller
             })
             .ToList();
 
-    /// <summary>Installs one tool into the enforced PopMark path even if a copy exists elsewhere.</summary>
+    /// <summary>Installs a tool under PopMark's own folder even if another copy exists.</summary>
     public async Task<string> InstallToManagedPathAsync(string commandName, CancellationToken cancellationToken = default)
     {
         var dependency = PlaybackDependencies.FirstOrDefault(candidate =>
@@ -133,10 +133,7 @@ public sealed class DependencyInstaller
         ToolLocator.EnsureExecutable(destination);
     }
 
-    /// <summary>
-    /// yt-dlp publishes a self-contained binary per platform. Linux/Android get the
-    /// matching build, so a phone never receives a Windows .exe.
-    /// </summary>
+    /// <summary>yt-dlp ships one self-contained binary per platform.</summary>
     private static YtDlpRelease YtDlpReleaseForCurrentPlatform()
     {
         if (PopMarkState.IsWindows)
@@ -215,11 +212,7 @@ public sealed class DependencyInstaller
         }
     }
 
-    /// <summary>
-    /// Linux and macOS do not have a portable mpv archive that is safe to unpack, so
-    /// install through the system package manager. Inside Termux proot the user is root,
-    /// which makes this work without extra prompts.
-    /// </summary>
+    /// <summary>Linux and macOS install mpv through the system package manager.</summary>
     private static async Task InstallMpvFromPackageManagerAsync(CancellationToken cancellationToken)
     {
         var packageManager = FindPackageManager();

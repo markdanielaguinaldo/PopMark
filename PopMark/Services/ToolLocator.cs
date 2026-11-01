@@ -28,10 +28,7 @@ public static class ToolLocator
     public static string ManagedExecutablePath(string commandName) =>
         Path.Combine(ManagedDirectory(commandName), RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? commandName + ".exe" : commandName);
 
-    /// <summary>
-    /// Downloaded tools must carry the execute bit on Linux and macOS; a file extracted
-    /// from a zip or written by HttpClient does not get it automatically.
-    /// </summary>
+    /// <summary>Downloads need the execute bit on Unix; a zip or HttpClient write does not set it.</summary>
     public static void EnsureExecutable(string executablePath)
     {
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows) || !File.Exists(executablePath))
@@ -148,9 +145,8 @@ public static class ToolLocator
     }
 
     /// <summary>
-    /// Puts a tool's own directory on the process PATH so child processes inherit it.
-    /// mpv shells out to yt-dlp by name, so a yt-dlp that only exists inside a WinGet
-    /// package folder is invisible to mpv unless that folder is on the PATH we hand down.
+    /// Puts a tool's folder on the child PATH. mpv looks up yt-dlp by name, so a copy
+    /// inside a WinGet package folder is invisible without this.
     /// </summary>
     public static void PrependToProcessPath(string? directory)
     {
@@ -232,7 +228,7 @@ public static class ToolLocator
         return LocateWithWhere(commandName) ?? LocateRecursively(commandName);
     }
 
-    /// <summary>Explicit pins beat discovery: the saved tools.json, then environment, then PopMark's own install.</summary>
+    /// <summary>Pins win over discovery: tools.json, then the environment, then PopMark's own install.</summary>
     private static IEnumerable<string> GetPinnedCandidates(string commandName)
     {
         if (LoadOverrides().TryGetValue(commandName, out var configured) && !string.IsNullOrWhiteSpace(configured))

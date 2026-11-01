@@ -273,9 +273,8 @@ public sealed class MpvPlayer
     }
 
     /// <summary>
-    /// Reads a numeric mpv property (for example time-pos or duration) through
-    /// the same IPC socket used for playback commands. Returns null when mpv is
-    /// not running, the property is unavailable, or the request times out.
+    /// Reads a numeric mpv property (time-pos, duration) over the same IPC socket
+    /// used for commands. Returns null when mpv is gone or the read times out.
     /// </summary>
     public async Task<double?> TryGetNumberPropertyAsync(
         string property,

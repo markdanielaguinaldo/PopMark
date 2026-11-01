@@ -3,8 +3,8 @@ import { clamp } from "./format";
 
 /**
  * Projects the last authoritative position forward between backend updates.
- * Both timestamps must come from the same clock: mixing performance.now() with
- * Date.now() makes the position look hours ahead and pins the bar at 100%.
+ * Both timestamps must use the same clock; mixing performance.now() with Date.now()
+ * pins the bar at 100%.
  */
 export function liveElapsedSeconds(
   baseSeconds: number,

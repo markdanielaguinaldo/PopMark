@@ -1,10 +1,8 @@
 namespace PopMark.Helpers;
 
 /// <summary>
-/// Owns the folder that holds the queue, tool pins, sessions, theme, and managed tools.
-/// Windows keeps using %LOCALAPPDATA%\PopMark. Linux, including a Termux proot
-/// environment, follows the XDG base directory spec. POPMARK_HOME overrides both, which
-/// is what the Termux launcher uses to keep state inside the Android home directory.
+/// Resolves the state folder for the queue, tools, sessions, theme, and logs.
+/// Windows uses %LOCALAPPDATA%; Linux follows XDG; POPMARK_HOME overrides both.
 /// </summary>
 public static class PopMarkState
 {

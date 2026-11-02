@@ -105,6 +105,9 @@ export function App(props: {
   const dense = () => dimensions().width < 60;
   const short = () => dimensions().height < 30;
   const tiny = () => dimensions().height < 22;
+  // 30–35 row terminals have room for all the content but not for the roomy
+  // spacer lines; reclaim those rows for the queue.
+  const condensed = () => dimensions().height < 36;
 
   const [store, setStore] = createStore<AppStore>({
     connection: "connecting",
@@ -1149,6 +1152,7 @@ export function App(props: {
               compact={short()}
               tiny={tiny()}
               dense={dense()}
+              tight={condensed()}
               current={store.queue.current}
               status={store.playback.status}
               elapsed={displayElapsed()}

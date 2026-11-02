@@ -10,7 +10,7 @@ import { Splash } from "../src/components/Splash";
 import type { LogEntry } from "../src/lib/logs";
 import { applyTheme, themeId } from "../src/theme";
 
-function seed(emit: (message: BackendMessage) => void) {
+function seed(emit: (message: BackendMessage) => void, pendingCount = 1) {
   emit({ type: "hello", protocol: 1, app: "PopMark", version: "1.2.0" });
   emit({
     type: "tools",
@@ -39,14 +39,12 @@ function seed(emit: (message: BackendMessage) => void) {
         durationSeconds: 120,
       },
     ],
-    pending: [
-      {
-        title: "Upcoming Track",
-        url: "https://example.com/watch?v=upcoming",
-        displaySource: "YouTube",
-        durationSeconds: 240,
-      },
-    ],
+    pending: Array.from({ length: pendingCount }, (_, i) => ({
+      title: i === 0 ? "Upcoming Track" : `Upcoming Track ${i + 1}`,
+      url: `https://example.com/watch?v=upcoming${i}`,
+      displaySource: "YouTube",
+      durationSeconds: 240 + i,
+    })),
   });
   emit({
     type: "state",
@@ -66,7 +64,7 @@ function seed(emit: (message: BackendMessage) => void) {
   });
 }
 
-function fakeBackend() {
+function fakeBackend(pendingCount = 1) {
   const sent: OutboundMessage[] = [];
   let events: BridgeEvents | undefined;
 
@@ -88,7 +86,7 @@ function fakeBackend() {
     client,
     factory: (bridgeEvents: BridgeEvents) => {
       events = bridgeEvents;
-      seed(bridgeEvents.onMessage);
+      seed(bridgeEvents.onMessage, pendingCount);
       return client;
     },
     emit: (message: BackendMessage) => events?.onMessage(message),
@@ -118,6 +116,8 @@ test("renders the queue and sends transport shortcuts", async () => {
     expect(frame).toContain("commands");
     expect(frame).toContain("saved library");
     expect(frame).toContain("NAVIGATION");
+    expect(frame).toContain("[ctrl+-=]");
+    expect(frame).toContain("text size");
     expect(frame).toContain("0:42");
     expect(frame).toContain("3:00");
 
@@ -214,6 +214,54 @@ test("renders the queue and sends transport shortcuts", async () => {
   }
 });
 
+test("dragging a queue row reorders it without starting playback", async () => {
+  applyTheme("midnight", false);
+  const fake = fakeBackend(4);
+  const setup = await testRender(() => <App createClient={fake.factory} />, {
+    width: 120,
+    height: 40,
+  });
+
+  try {
+    await setup.renderOnce();
+    await setup.flush();
+
+    const from = setup.renderer.root.findDescendantById("queue-row-2");
+    const to = setup.renderer.root.findDescendantById("queue-row-3");
+    expect(from).toBeDefined();
+    expect(to).toBeDefined();
+
+    // Reorder row 2 onto row 3. The renderer sends a mouse-up to both the
+    // source and the drop target; neither should be treated as a click.
+    await setup.mockMouse.drag(from!.x + 4, from!.y, to!.x + 4, to!.y);
+    await Bun.sleep(20);
+    await setup.renderOnce();
+
+    expect(fake.sent).toContainEqual({ type: "move-track", index: 2, to: 3 });
+    expect(fake.sent.filter((message) => message.type === "play-index")).toHaveLength(0);
+
+    // Dropping a track on the history section should do nothing at all.
+    const history = setup.renderer.root.findDescendantById("queue-row-0");
+    expect(history).toBeDefined();
+    await setup.mockMouse.drag(to!.x + 4, to!.y, history!.x + 4, history!.y);
+    await Bun.sleep(20);
+    await setup.renderOnce();
+
+    expect(fake.sent.filter((message) => message.type === "move-track")).toHaveLength(1);
+    expect(fake.sent.filter((message) => message.type === "play-index")).toHaveLength(0);
+
+    // A plain click still starts playback.
+    const clickRow = setup.renderer.root.findDescendantById("queue-row-3");
+    expect(clickRow).toBeDefined();
+    await setup.mockMouse.click(clickRow!.x + 4, clickRow!.y);
+    await Bun.sleep(20);
+    await setup.renderOnce();
+    expect(fake.sent).toContainEqual({ type: "play-index", index: 3 });
+  } finally {
+    await setup.dispose();
+  }
+});
+
 test("sidebar shortcuts stay readable on short terminals", async () => {
   for (const [width, height] of [[100, 30], [110, 32]] as const) {
     const fake = fakeBackend();
@@ -237,6 +285,36 @@ test("sidebar shortcuts stay readable on short terminals", async () => {
     } finally {
       await setup.dispose();
     }
+  }
+});
+
+test("short terminals keep the upcoming queue and shortcut list in view", async () => {
+  applyTheme("midnight", false);
+  const fake = fakeBackend();
+  const setup = await testRender(() => <App createClient={fake.factory} />, {
+    width: 120,
+    height: 32,
+  });
+
+  try {
+    await setup.renderOnce();
+    await setup.flush();
+    // The queue re-anchors on the current row after the next layout pass.
+    await Bun.sleep(80);
+    await setup.renderOnce();
+    const frame = setup.captureCharFrame();
+
+    expect(frame).toContain("UP NEXT");
+    expect(frame).toContain("Upcoming Track");
+    expect(frame).toContain("[ctrl+↑↓]");
+    expect(frame).toContain("[alt+←→]");
+    expect(frame).toContain("[ctrl+-=]");
+    expect(frame).toContain("text size");
+    // The shortcut panel must end inside its border, not on top of it.
+    expect(frame).toContain("[F6]");
+    expect(frame).not.toContain("─saved");
+  } finally {
+    await setup.dispose();
   }
 });
 
@@ -462,6 +540,8 @@ test("renders help and tools dialogs and the focus view", async () => {
     expect(frame).toContain("PLAYBACK");
     expect(frame).toContain("tools install");
     expect(frame).toContain("ctrl+p");
+    expect(frame).toContain("ctrl+- / ctrl+=");
+    expect(frame).toContain("text size");
   } finally {
     await help.dispose();
   }

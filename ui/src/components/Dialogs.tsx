@@ -221,8 +221,8 @@ export function HelpDialog(props: { onClose: () => void; narrow: boolean }) {
       </scrollbox>
 
       <box flexDirection="row" justifyContent="space-between" alignItems="center">
-        <text fg={theme.faint} selectable={false}>
-          Click outside or press esc to close.
+        <text fg={theme.faint} selectable={false} wrapMode="none">
+          esc closes  ·  ctrl+- / ctrl+=  terminal text size  ·  ctrl+0  reset
         </text>
         <ActionButton label="CLOSE" onPress={props.onClose} tone="accent" />
       </box>

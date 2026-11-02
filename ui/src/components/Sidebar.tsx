@@ -44,7 +44,8 @@ export function Sidebar(props: {
 }) {
   const ready = () => props.tools.filter((tool) => tool.runnable).length;
   const dimensions = useTerminalDimensions();
-  const tight = () => props.compact || dimensions().height < 34;
+  const tight = () => props.compact || dimensions().height < 32;
+  const condensedTools = () => dimensions().height < 36;
   const roomy = () => !props.compact && dimensions().height >= 40;
 
   return (
@@ -62,7 +63,9 @@ export function Sidebar(props: {
             F2
           </text>
         </box>
-        <box height={1} />
+        <Show when={!condensedTools()} fallback={<box height={0} />}>
+          <box height={1} />
+        </Show>
         <For each={props.tools}>
           {(tool) => (
             <box
@@ -124,7 +127,14 @@ export function Sidebar(props: {
         </box>
       </Panel>
 
-      <Panel title="SHORTCUTS" flexGrow={1} minHeight={12} padding={1}>
+      <Panel
+        title="SHORTCUTS"
+        flexGrow={1}
+        minHeight={12}
+        padding={1}
+        paddingTop={dimensions().height < 36 ? 0 : undefined}
+        paddingBottom={dimensions().height < 36 ? 0 : undefined}
+      >
         <box flexDirection="column" gap={0}>
           <ShortcutRow keys="[ctrl+p]" label="play / pause" />
           <ShortcutRow keys="[ctrl+→]" label="next track" />
@@ -132,6 +142,9 @@ export function Sidebar(props: {
           <Show when={!tight()} fallback={<box height={0} />}>
             <ShortcutRow keys="[ctrl+↑↓]" label="volume" />
             <ShortcutRow keys="[alt+←→]" label="seek ±10s" />
+          </Show>
+          <Show when={!props.compact} fallback={<box height={0} />}>
+            <ShortcutRow keys="[ctrl+-=]" label="text size" />
           </Show>
 
           <box height={1} />
@@ -144,10 +157,6 @@ export function Sidebar(props: {
 
           <Show when={roomy()} fallback={<box height={0} />}>
             <box flexDirection="column" gap={0} flexShrink={0}>
-              <box height={1} />
-              <text fg={theme.border} selectable={false} wrapMode="none">
-                {"─".repeat(30)}
-              </text>
               <text
                 fg={theme.dim}
                 attributes={TextAttributes.BOLD}

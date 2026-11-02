@@ -1,7 +1,7 @@
 import { TextAttributes } from "@opentui/core";
 import type { ScrollBoxRenderable } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/solid";
-import { For, Show, createEffect, createSignal } from "solid-js";
+import { For, Show, createEffect, createSignal, onCleanup } from "solid-js";
 import type { PlaylistEntry } from "../lib/playlist";
 import { formatTime, pluralize } from "../lib/format";
 import { theme } from "../theme";
@@ -35,13 +35,15 @@ function sectionColor(kind: PlaylistEntry["kind"]): string {
   return theme.dim;
 }
 
+type RowMouseEvent = { x: number; y: number };
+
 function QueueRow(props: {
   entry: PlaylistEntry;
   selected: boolean;
-  onMouseDown: (index: number, kind: PlaylistEntry["kind"]) => void;
-  onMouseDrag: (index: number, kind: PlaylistEntry["kind"]) => void;
+  onMouseDown: (index: number, kind: PlaylistEntry["kind"], event: RowMouseEvent) => void;
+  onMouseDrag: (index: number, kind: PlaylistEntry["kind"], event: RowMouseEvent) => void;
   onMouseUp: (index: number, kind: PlaylistEntry["kind"]) => void;
-  onMouseDrop: (index: number) => void;
+  onMouseDrop: (index: number, kind: PlaylistEntry["kind"]) => void;
 }) {
   const [hovered, setHovered] = createSignal(false);
 
@@ -111,11 +113,11 @@ function QueueRow(props: {
       onMouseDown={(event) => {
         event.stopPropagation();
         event.preventDefault();
-        props.onMouseDown(props.entry.index, props.entry.kind);
+        props.onMouseDown(props.entry.index, props.entry.kind, event);
       }}
-      onMouseDrag={() => props.onMouseDrag(props.entry.index, props.entry.kind)}
+      onMouseDrag={(event) => props.onMouseDrag(props.entry.index, props.entry.kind, event)}
       onMouseUp={() => props.onMouseUp(props.entry.index, props.entry.kind)}
-      onMouseDrop={() => props.onMouseDrop(props.entry.index)}
+      onMouseDrop={() => props.onMouseDrop(props.entry.index, props.entry.kind)}
     >
       <text fg={railColor()} selectable={false} wrapMode="none" width={1}>
         {rail()}
@@ -167,48 +169,116 @@ export function QueuePanel(props: {
   onFocusInput: () => void;
 }) {
   let scroll: ScrollBoxRenderable | undefined;
-  let dragSource: number | null = null;
+  let pressedIndex: number | null = null;
+  let pressedKind: PlaylistEntry["kind"] | null = null;
+  let pressX = 0;
+  let pressY = 0;
   let dragMoved = false;
+  let clickTimer: ReturnType<typeof setTimeout> | undefined;
+  let anchorIndex: number | null = null;
+  let anchorTimer: ReturnType<typeof setTimeout> | undefined;
+  let anchorRetries = 0;
   const dimensions = useTerminalDimensions();
 
-  function handleRowDown(index: number, kind: PlaylistEntry["kind"]) {
-    props.onSelect(index);
-    dragSource = kind === "pending" ? index : null;
+  // Park the current track a third of the way down the viewport once the list
+  // has a real layout, so "UP NEXT" is visible on short terminals instead of
+  // the current row hugging the bottom edge.
+  function applyAnchor(): boolean {
+    const node = scroll;
+    const index = anchorIndex;
+    if (!node || index === null) return false;
+    if (node.scrollHeight <= node.height) return false;
+    const row = node.findDescendantById(`queue-row-${index}`);
+    if (!row) return false;
+    const offset = row.y - node.y + node.scrollTop;
+    if (offset < 0) return false;
+    const anchor = Math.max(1, Math.floor(node.height / 3));
+    node.scrollTop = Math.max(0, offset - anchor);
+    anchorIndex = null;
+    return true;
+  }
+
+  // Row geometry is only valid after the layout pass that follows a queue
+  // update, so retry for a few frames when the first attempt sees a stale tree.
+  function scheduleAnchor() {
+    if (anchorIndex === null) return;
+    if (applyAnchor()) return;
+    if (anchorRetries >= 20) {
+      anchorIndex = null;
+      return;
+    }
+    anchorRetries += 1;
+    if (anchorTimer) clearTimeout(anchorTimer);
+    anchorTimer = setTimeout(scheduleAnchor, 16);
+  }
+
+  onCleanup(() => {
+    if (anchorTimer) clearTimeout(anchorTimer);
+    if (clickTimer) clearTimeout(clickTimer);
+  });
+
+  function resetPress() {
+    pressedIndex = null;
+    pressedKind = null;
     dragMoved = false;
   }
 
-  function handleRowDrag(index: number, kind: PlaylistEntry["kind"]) {
-    if (dragSource === index && kind === "pending") dragMoved = true;
+  function handleRowDown(index: number, kind: PlaylistEntry["kind"], event: RowMouseEvent) {
+    // A previous click may still be waiting for its drop/up handshake.
+    if (clickTimer) {
+      clearTimeout(clickTimer);
+      clickTimer = undefined;
+    }
+    pressedIndex = index;
+    pressedKind = kind;
+    pressX = event.x;
+    pressY = event.y;
+    dragMoved = false;
+    props.onSelect(index);
   }
 
-  function handleRowUp(index: number, kind: PlaylistEntry["kind"]) {
-    if (dragSource === null || kind !== "pending") {
-      props.onPlay(index);
-      return;
-    }
+  function handleRowDrag(_index: number, _kind: PlaylistEntry["kind"], event: RowMouseEvent) {
+    if (pressedIndex === null || dragMoved) return;
+    // A row is one cell tall, so any vertical travel means the pointer left the
+    // row. Horizontal jitter of a cell or two is still a click.
+    dragMoved = Math.abs(event.y - pressY) >= 1 || Math.abs(event.x - pressX) >= 3;
+  }
 
-    const source = dragSource;
-    // Drop events arrive in the same turn as mouse-up. Defer the click action
-    // so releasing on another row reorders instead of starting playback.
-    setTimeout(() => {
-      if (dragSource !== source) return;
-      if (!dragMoved) props.onPlay(index);
-      dragSource = null;
-      dragMoved = false;
+  function handleRowUp(index: number) {
+    const source = pressedIndex;
+    if (source === null) return;
+
+    // The renderer follows a captured mouse-up with a drop event for the row
+    // under the pointer. Defer the click by a turn so a completed drag can
+    // cancel it instead of starting playback.
+    if (clickTimer) clearTimeout(clickTimer);
+    clickTimer = setTimeout(() => {
+      clickTimer = undefined;
+      if (pressedIndex !== source) return;
+      const wasMoved = dragMoved;
+      resetPress();
+      // Releasing on a different row means the pointer travelled between rows
+      // even if the terminal never reported a drag event.
+      if (!wasMoved && index === source) props.onPlay(source);
     }, 0);
   }
 
-  function handleRowDrop(index: number) {
-    const source = dragSource;
+  function handleRowDrop(index: number, kind: PlaylistEntry["kind"]) {
+    const source = pressedIndex;
     if (source === null) return;
 
-    dragSource = null;
-    if (source === index) {
-      if (!dragMoved) props.onPlay(index);
-    } else {
+    const sourceKind = pressedKind;
+    const wasMoved = dragMoved;
+    // Resolve the gesture before the renderer's second (target row) mouse-up
+    // arrives, so it is not mistaken for a click.
+    resetPress();
+
+    if (sourceKind !== "pending" || kind !== "pending") return;
+    if (source !== index) {
       props.onMove(source, index);
+    } else if (!wasMoved) {
+      props.onPlay(index);
     }
-    dragMoved = false;
   }
 
   // On a phone the queue header costs a whole track row; drop it when the panel
@@ -218,8 +288,14 @@ export function QueuePanel(props: {
   createEffect(() => {
     dimensions();
     const index = props.selectedIndex;
-    if (index < 0) return;
+    if (index < 0) {
+      anchorIndex = null;
+      return;
+    }
     scroll?.scrollChildIntoView(`queue-row-${index}`);
+    anchorIndex = props.entries[index]?.kind === "current" ? index : null;
+    anchorRetries = 0;
+    scheduleAnchor();
   });
 
   const counts = () => {

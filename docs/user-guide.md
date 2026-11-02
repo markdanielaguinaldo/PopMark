@@ -163,6 +163,7 @@ Type `help` or press <kbd>F1</kbd> for the in-app command reference.
 | <kbd>Ctrl</kbd>+<kbd>←</kbd> / <kbd>Ctrl</kbd>+<kbd>→</kbd> | Seek ±10 seconds |
 | <kbd>Ctrl</kbd>+<kbd>↑</kbd> / <kbd>Ctrl</kbd>+<kbd>↓</kbd> | Volume ±10% |
 | <kbd>Alt</kbd>+<kbd>←</kbd> / <kbd>Alt</kbd>+<kbd>→</kbd> | Seek ±10 seconds |
+| <kbd>Ctrl</kbd>+<kbd>-</kbd> / <kbd>Ctrl</kbd>+<kbd>=</kbd> | Terminal text size; smaller text reflows the panels to show more rows (<kbd>Ctrl</kbd>+<kbd>0</kbd> resets) |
 | <kbd>F1</kbd> | Command reference |
 | <kbd>F2</kbd> | Playback tools |
 | <kbd>F3</kbd> | Focus View |

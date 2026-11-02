@@ -41,6 +41,7 @@ export function NowPlaying(props: {
   compact?: boolean;
   tiny?: boolean;
   dense?: boolean;
+  tight?: boolean;
   columns: number;
   onToggle: () => void;
   onNext: () => void;
@@ -52,6 +53,8 @@ export function NowPlaying(props: {
 }) {
   const playing = () => props.status === "Playing";
   const dense = () => props.dense === true;
+  const tight = () => props.tight === true;
+  const compactSpacing = () => dense() || (tight() && !props.compact);
   // Below ~44 columns the five transport buttons plus the volume slider do not
   // fit on one row; stack them so nothing is clipped on a phone.
   const stackedTransport = () => dense() && props.columns < 44;
@@ -81,9 +84,9 @@ export function NowPlaying(props: {
       flexBasis="auto"
       flexShrink={0}
       minHeight={dense() ? 6 : props.tiny ? 5 : props.compact ? 7 : 9}
-      padding={dense() ? 0 : 1}
-      paddingLeft={dense() ? 1 : undefined}
-      paddingRight={dense() ? 1 : undefined}
+      padding={compactSpacing() ? 0 : 1}
+      paddingLeft={compactSpacing() ? 1 : undefined}
+      paddingRight={compactSpacing() ? 1 : undefined}
       gap={0}
     >
       <box flexDirection="row" alignItems="flex-start" gap={1} flexShrink={0}>
@@ -145,7 +148,7 @@ export function NowPlaying(props: {
         </text>
       </Show>
 
-      <Show when={!props.compact} fallback={<box height={0} />}>
+      <Show when={!props.compact && !compactSpacing()} fallback={<box height={0} />}>
         <box height={1} flexShrink={0} />
       </Show>
 
@@ -179,7 +182,7 @@ export function NowPlaying(props: {
         </Show>
       </box>
 
-      <Show when={!props.compact} fallback={<box height={0} />}>
+      <Show when={!props.compact && !compactSpacing()} fallback={<box height={0} />}>
         <box height={1} flexShrink={0} />
       </Show>
 
@@ -308,7 +311,7 @@ export function NowPlaying(props: {
         </Show>
       </box>
 
-      <Show when={!props.tiny && !dense()} fallback={<box height={0} />}>
+      <Show when={!props.tiny && !compactSpacing()} fallback={<box height={0} />}>
         <box height={1} flexShrink={0} />
       </Show>
 

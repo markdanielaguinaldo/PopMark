@@ -22,7 +22,6 @@ public static class ToolLocator
 
     public static string OverrideFilePath => PopMarkState.ToolsFile;
 
-    /// <summary>The enforced install location PopMark manages itself.</summary>
     public static string ManagedDirectory(string commandName) => Path.Combine(ToolRoot, commandName);
 
     public static string ManagedExecutablePath(string commandName) =>
@@ -107,8 +106,9 @@ public static class ToolLocator
                     {
                         process.Kill(entireProcessTree: true);
                     }
-                    catch
+                    catch (InvalidOperationException)
                     {
+                        // The probe exited on its own between the timeout and the kill.
                     }
 
                     return false;
@@ -116,8 +116,10 @@ public static class ToolLocator
 
                 return process.ExitCode == 0;
             }
-            catch
+            catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException
+                                           or IOException or UnauthorizedAccessException)
             {
+                // A tool that will not start is simply not available here.
                 return false;
             }
         });
@@ -138,7 +140,7 @@ public static class ToolLocator
                 ReadEnvironmentVariableSafely("PATH", EnvironmentVariableTarget.Machine)
             }
             .Where(path => !string.IsNullOrWhiteSpace(path))
-            .SelectMany(path => path!.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+            .SelectMany(path => (path ?? string.Empty).Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
 
         var merged = string.Join(Path.PathSeparator, paths.Concat(GetFallbackPathDirectories()).Distinct(StringComparer.OrdinalIgnoreCase));
         Environment.SetEnvironmentVariable("PATH", merged, EnvironmentVariableTarget.Process);
@@ -195,7 +197,10 @@ public static class ToolLocator
             else
                 overrides[commandName] = executablePath;
 
-            Directory.CreateDirectory(Path.GetDirectoryName(OverrideFilePath)!);
+            var overrideDirectory = Path.GetDirectoryName(OverrideFilePath);
+            if (!string.IsNullOrEmpty(overrideDirectory))
+                Directory.CreateDirectory(overrideDirectory);
+
             File.WriteAllText(OverrideFilePath, JsonSerializer.Serialize(overrides, new JsonSerializerOptions { WriteIndented = true }));
         }
 

@@ -29,8 +29,10 @@ internal static class TerminalHost
             Console.OutputEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
             Console.InputEncoding = Encoding.UTF8;
         }
-        catch
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or ObjectDisposedException
+                                       or PlatformNotSupportedException or UnauthorizedAccessException)
         {
+            // Best effort: a redirected, closed, or unsupported console must not crash the UI.
         }
 
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
@@ -49,8 +51,10 @@ internal static class TerminalHost
 
             RememberOriginalInputMode();
         }
-        catch
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or ObjectDisposedException
+                                       or PlatformNotSupportedException or UnauthorizedAccessException)
         {
+            // Best effort: a redirected, closed, or unsupported console must not crash the UI.
         }
     }
 
@@ -106,8 +110,10 @@ internal static class TerminalHost
             if (!Console.IsOutputRedirected)
                 Console.Write("\u001b[5 q\u001b[?25l");
         }
-        catch
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or ObjectDisposedException
+                                       or PlatformNotSupportedException or UnauthorizedAccessException)
         {
+            // Best effort: a redirected, closed, or unsupported console must not crash the UI.
         }
     }
 
@@ -118,8 +124,10 @@ internal static class TerminalHost
             if (!Console.IsOutputRedirected)
                 Console.Write("\u001b[?25h");
         }
-        catch
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or ObjectDisposedException
+                                       or PlatformNotSupportedException or UnauthorizedAccessException)
         {
+            // Best effort: a redirected, closed, or unsupported console must not crash the UI.
         }
     }
 
@@ -130,8 +138,10 @@ internal static class TerminalHost
             if (!Console.IsOutputRedirected)
                 Console.Write("\u001b[?25l");
         }
-        catch
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or ObjectDisposedException
+                                       or PlatformNotSupportedException or UnauthorizedAccessException)
         {
+            // Best effort: a redirected, closed, or unsupported console must not crash the UI.
         }
     }
 
@@ -143,8 +153,10 @@ internal static class TerminalHost
                 Console.Write("\u001b[?1006l\u001b[?1002l\u001b[?1000l\u001b[?25h\u001b[0 q");
             RestoreStandardInput();
         }
-        catch
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or ObjectDisposedException
+                                       or PlatformNotSupportedException or UnauthorizedAccessException)
         {
+            // Best effort: a redirected, closed, or unsupported console must not crash the UI.
         }
     }
 
@@ -209,8 +221,10 @@ internal static class TerminalHost
             _originalInputMode ??= inputMode;
             _ = SetConsoleMode(inputHandle, inputMode | EnableVirtualTerminalInput);
         }
-        catch
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or ObjectDisposedException
+                                       or PlatformNotSupportedException or UnauthorizedAccessException)
         {
+            // Best effort: a redirected, closed, or unsupported console must not crash the UI.
         }
     }
 
@@ -227,8 +241,10 @@ internal static class TerminalHost
 
             _ = SetConsoleMode(inputHandle, _originalInputMode.Value);
         }
-        catch
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or ObjectDisposedException
+                                       or PlatformNotSupportedException or UnauthorizedAccessException)
         {
+            // Best effort: a redirected, closed, or unsupported console must not crash the UI.
         }
     }
 

@@ -31,6 +31,7 @@ function destroyRenderer() {
   try {
     renderer.destroy();
   } catch {
+    // The renderer is already torn down; shutdown must continue regardless.
   }
 }
 

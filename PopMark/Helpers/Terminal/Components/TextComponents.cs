@@ -3,7 +3,6 @@ using PopMark.Models;
 
 namespace PopMark.Helpers.Terminal.Components;
 
-/// <summary>A single line of styled text.</summary>
 internal sealed class TextComponent : UiComponent
 {
     public string Text { get; set; } = string.Empty;
@@ -44,7 +43,6 @@ internal sealed class TextComponent : UiComponent
         };
 }
 
-/// <summary>A line made of multiple styled spans.</summary>
 internal sealed class StyledTextComponent : UiComponent
 {
     public IReadOnlyList<TextSpan> Spans { get; set; } = Array.Empty<TextSpan>();

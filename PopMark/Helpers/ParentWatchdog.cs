@@ -28,6 +28,7 @@ internal sealed class ParentWatchdog : IDisposable
             }
             catch (OperationCanceledException)
             {
+                // The watchdog was cancelled; a parent that is still alive is not a loss.
             }
         });
     }

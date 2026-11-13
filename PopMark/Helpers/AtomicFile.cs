@@ -41,9 +41,11 @@ internal static class AtomicFile
                 }
                 catch (PlatformNotSupportedException)
                 {
+                    // Replace is unavailable here; the Move below is the fallback.
                 }
                 catch (IOException)
                 {
+                    // A sharing violation on either file; the Move below is the fallback.
                 }
             }
 
@@ -81,8 +83,9 @@ internal static class AtomicFile
             if (File.Exists(path))
                 File.Delete(path);
         }
-        catch
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
+            // A stray temp file is harmless; never fail the write over cleanup.
         }
     }
 }

@@ -92,8 +92,8 @@ function buildRow(
   cy: number,
   centerRadius: number,
 ): Span[] {
-  const cells = new Array(width).fill(" ");
-  const colors = new Array<string | undefined>(width);
+  const cells = Array.from({ length: width }, () => " ");
+  const colors = Array.from<string | undefined>({ length: width });
 
   for (const star of stars) {
     if (star.y !== y) continue;

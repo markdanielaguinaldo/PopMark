@@ -302,9 +302,9 @@ internal static class SplashCanvas
         var pulse = frame % 4 < 2 ? theme.SplashWhite : theme.SplashPulseBright;
 
         WriteCentered(cells, titleRow, "PopMark", theme.SplashPulseBright);
-        if (playbackMode)
+        if (playbackMode && snapshot is not null)
         {
-            var track = snapshot!.Current ?? snapshot.Pending.FirstOrDefault();
+            var track = snapshot.Current ?? snapshot.Pending.FirstOrDefault();
             var trackText = TerminalText.TrimForWidget(track?.Title ?? "Queue is empty", Math.Max(12, width - 8));
             var waveWidth = Math.Clamp(width - 12, 12, 54);
             var wave = SplashWave(snapshot.Status, frame, waveWidth);

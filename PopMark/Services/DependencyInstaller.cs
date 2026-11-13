@@ -199,7 +199,11 @@ public sealed class DependencyInstaller
         if (Directory.Exists(installDirectory))
             Directory.Delete(installDirectory, recursive: true);
 
-        Directory.Move(Path.GetDirectoryName(mpvExe)!, installDirectory);
+        var sourceDirectory = Path.GetDirectoryName(mpvExe);
+        if (sourceDirectory is null)
+            throw new InvalidOperationException("The extracted mpv.exe has no parent directory.");
+
+        Directory.Move(sourceDirectory, installDirectory);
 
         try
         {
@@ -207,8 +211,9 @@ public sealed class DependencyInstaller
             if (Directory.Exists(tempDirectory))
                 Directory.Delete(tempDirectory, recursive: true);
         }
-        catch
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
+            // Cleanup only: a leftover archive or temp folder must not fail an install that succeeded.
         }
     }
 
@@ -371,7 +376,10 @@ public sealed class DependencyInstaller
 
     private static async Task DownloadFileAsync(string url, string destination, CancellationToken cancellationToken)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+        var destinationDirectory = Path.GetDirectoryName(destination);
+        if (!string.IsNullOrEmpty(destinationDirectory))
+            Directory.CreateDirectory(destinationDirectory);
+
         var tempFile = destination + ".download";
 
         using var response = await HttpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken);

@@ -199,6 +199,7 @@ export function createBridgeClient(events: BridgeEvents): BridgeClient {
         child.stdin.write(`${JSON.stringify({ type: "quit" })}\n`);
         await child.stdin.flush();
       } catch {
+        // The child may already be gone; the exit race below covers it.
       }
 
       const exited = await Promise.race([
@@ -210,6 +211,7 @@ export function createBridgeClient(events: BridgeEvents): BridgeClient {
         try {
           child.kill();
         } catch {
+          // It exited between the race and the kill; nothing left to stop.
         }
       }
     }

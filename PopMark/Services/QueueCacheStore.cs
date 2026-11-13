@@ -42,8 +42,10 @@ public static class QueueCacheStore
 
             AtomicFile.WriteAllText(CacheFilePath, JsonSerializer.Serialize(cache, JsonOptions));
         }
-        catch
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+                                       or JsonException or NotSupportedException)
         {
+            // The queue cache is an optimisation; losing it only costs a repopulate.
         }
     }
 
@@ -54,8 +56,9 @@ public static class QueueCacheStore
             if (File.Exists(CacheFilePath))
                 File.Delete(CacheFilePath);
         }
-        catch
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
+            // A stale cache is harmless; the next snapshot overwrites it.
         }
     }
 

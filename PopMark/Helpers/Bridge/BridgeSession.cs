@@ -1,6 +1,7 @@
 using PopMark.Helpers;
 using PopMark.Models;
 using PopMark.Services;
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Threading.Channels;
 
@@ -98,8 +99,13 @@ internal sealed class BridgeSession
         {
             _shutdown.Cancel();
         }
-        catch
+        catch (ObjectDisposedException)
         {
+            // Already shut down; the pipe still has to be completed below.
+        }
+        catch (AggregateException)
+        {
+            // A cancellation callback threw; shutdown has to keep going.
         }
 
         _requests.Writer.TryComplete();
@@ -141,10 +147,10 @@ internal sealed class BridgeSession
 
                 if (result.Line is { } line)
                 {
-                    if (!BridgeRequest.TryParse(line, out var request, out var error))
-                        Write(BridgeErrorDto.Create(null, error ?? "Invalid bridge request."));
+                    if (BridgeRequest.TryParse(line, out var request, out var error) && request is not null)
+                        _requests.Writer.TryWrite(request);
                     else
-                        _requests.Writer.TryWrite(request!);
+                        Write(BridgeErrorDto.Create(null, error ?? "Invalid bridge request."));
                 }
 
                 if (result.EndOfStream)
@@ -153,6 +159,7 @@ internal sealed class BridgeSession
         }
         catch (OperationCanceledException)
         {
+            // Pipe closed or shutdown requested; the finally completes the channel.
         }
         catch (Exception ex)
         {
@@ -182,6 +189,7 @@ internal sealed class BridgeSession
         }
         catch (OperationCanceledException)
         {
+            // The session is shutting down; the timer has no more ticks to deliver.
         }
     }
 
@@ -898,9 +906,9 @@ internal sealed class BridgeSession
         }
     }
 
-    private static bool TryToTrack(BridgeTrackDto? dto, out Track track)
+    private static bool TryToTrack(BridgeTrackDto? dto, [NotNullWhen(true)] out Track? track)
     {
-        track = null!;
+        track = null;
         if (dto is null)
             return false;
 
@@ -1148,8 +1156,9 @@ internal sealed class BridgeSession
         {
             json = JsonSerializer.Serialize(message, BridgeProtocol.JsonOptions);
         }
-        catch (Exception)
+        catch (Exception ex) when (ex is JsonException or NotSupportedException or InvalidOperationException)
         {
+            // An unserialisable DTO must not take the bridge down with it.
             return;
         }
 

@@ -81,15 +81,15 @@ internal static class TerminalFrameRenderer
                         _previousFrame is null ||
                         _frameWidth != width ||
                         _frameHeight != height;
-        var showCursor = !normalized.MiniMode && !normalized.SplashMode && uiContext.Caret is not null;
+        var caret = !normalized.MiniMode && !normalized.SplashMode ? uiContext.Caret : null;
         var output = ScreenComposer.Compose(
             _previousFrame,
             buffer,
             fullPaint,
             useColor: true,
-            cursorRow: showCursor ? uiContext.Caret!.Value.Y : null,
-            cursorColumn: showCursor ? uiContext.Caret!.Value.X : null,
-            showCursor: showCursor);
+            cursorRow: caret is { } caretPosition ? caretPosition.Y : null,
+            cursorColumn: caret is { } caretColumn ? caretColumn.X : null,
+            showCursor: caret is not null);
 
         Console.Write(output);
 

@@ -29,18 +29,22 @@ public sealed class PlaybackShutdownGuard
 
         try
         {
+            // aislop-ignore-next-line ai-slop/csharp-sync-over-async -- a process-exit handler has nowhere to await
             _player.StopPlaybackAndKeepQueueAsync().GetAwaiter().GetResult();
         }
-        catch
+        catch (Exception ex) when (ex is InvalidOperationException or IOException
+                                       or ObjectDisposedException or AggregateException)
         {
+            // Playback is already gone; cleanup still reaches the after-cleanup callback.
         }
 
         try
         {
             _afterCleanup?.Invoke();
         }
-        catch
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
+            // A user callback must never break shutdown.
         }
     }
 

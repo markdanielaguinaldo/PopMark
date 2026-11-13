@@ -15,4 +15,4 @@ if (!result.success) {
   process.exit(1);
 }
 
-console.log(`Built ${result.outputs.length} file(s) into ui/dist.`);
+process.stdout.write(`Built ${result.outputs.length} file(s) into ui/dist.\n`);

@@ -247,8 +247,9 @@ public sealed class MpvPlayer
                 if (!process.HasExited)
                     process.Kill(entireProcessTree: true);
             }
-            catch
+            catch (InvalidOperationException)
             {
+                // The process exited between the check and the kill; nothing left to stop.
             }
         }
         finally

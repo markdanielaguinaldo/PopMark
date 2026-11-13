@@ -255,6 +255,7 @@ function loadThemeId(): ThemeId {
     const saved = JSON.parse(readFileSync(themeStatePath(), "utf8")) as { theme?: unknown };
     if (isThemeId(saved.theme)) return saved.theme;
   } catch {
+    // Unreadable or malformed state; fall back to the default theme.
   }
 
   return "midnight";
@@ -273,6 +274,7 @@ function saveThemeId(id: ThemeId) {
       try {
         copyFileSync(path, `${path}.bak`);
       } catch {
+        // Backup is best effort.
       }
     }
     renameSync(temp, path);
@@ -280,6 +282,7 @@ function saveThemeId(id: ThemeId) {
     try {
       rmSync(temp, { force: true });
     } catch {
+      // A stray temp file is harmless.
     }
   }
 }

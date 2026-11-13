@@ -32,7 +32,7 @@ internal static class ScreenComposer
         var styleState = new StyleState();
         for (var y = 0; y < current.Height; y++)
         {
-            if (fullPaint)
+            if (fullPaint || previous is null)
             {
                 MoveTo(output, y + 1, 1);
                 WriteRange(output, current, y, 0, current.Width, useColor, styleState);
@@ -40,7 +40,7 @@ internal static class ScreenComposer
                 continue;
             }
 
-            foreach (var (start, end) in FindChangedRanges(previous!, current, y))
+            foreach (var (start, end) in FindChangedRanges(previous, current, y))
             {
                 MoveTo(output, y + 1, start + 1);
                 WriteRange(output, current, y, start, end, useColor, styleState);

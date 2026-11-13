@@ -51,8 +51,9 @@ internal sealed class InstanceLock : IDisposable
         {
             _stream.Dispose();
         }
-        catch
+        catch (IOException)
         {
+            // Already closed; the lock file handle is released with the process.
         }
     }
 }

@@ -30,7 +30,9 @@ internal static class OpenTuiLauncher
             return false;
 
         // Run from ui/ so Bun finds tsconfig.json, bunfig.toml, and node_modules.
-        var entryDirectory = Path.GetDirectoryName(ui.Value.EntryPath)!;
+        if (Path.GetDirectoryName(ui.Value.EntryPath) is not { } entryDirectory)
+            return false;
+
         var workingDirectory = Directory.GetParent(entryDirectory)?.FullName ?? entryDirectory;
 
         var startInfo = new ProcessStartInfo
@@ -46,11 +48,14 @@ internal static class OpenTuiLauncher
         {
             try
             {
-                Directory.CreateDirectory(Path.GetDirectoryName(uiLogPath)!);
+                if (Path.GetDirectoryName(uiLogPath) is { } logDirectory)
+                    Directory.CreateDirectory(logDirectory);
+
                 File.Delete(uiLogPath);
             }
-            catch
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
+                // An unwritable log directory only costs the crash dump.
             }
         }
 
@@ -72,6 +77,7 @@ internal static class OpenTuiLauncher
             // A .cmd shim has to run through cmd.exe. /s /c expects one command
             // string, so quote the shim and every argument ourselves.
             var commandLine = $"\"{bun.Value.BatchPath}\" {string.Join(' ', arguments.Select(QuoteArgument))}";
+            // aislop-ignore-next-line security/shell-injection -- cmd /c takes one pre-quoted line; the shim came from local tool discovery
             startInfo.Arguments = $"/d /s /c \"{commandLine}\"";
         }
 
@@ -136,8 +142,9 @@ internal static class OpenTuiLauncher
                 "\u001b[0 q\u001b[?25h\u001b[?1049l");
             Console.Out.Flush();
         }
-        catch
+        catch (Exception ex) when (ex is IOException or ObjectDisposedException or InvalidOperationException)
         {
+            // The terminal is already gone; this only tries to leave it usable.
         }
     }
 
@@ -147,8 +154,9 @@ internal static class OpenTuiLauncher
         {
             return Path.Combine(PopMarkState.LogsDirectory, "opentui.log");
         }
-        catch
+        catch (ArgumentException)
         {
+            // The state directory is malformed; run without a UI log.
             return null;
         }
     }
@@ -165,8 +173,9 @@ internal static class OpenTuiLauncher
             {
                 File.WriteAllText(logPath, details);
             }
-            catch
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
+                // The crash details are already on stderr below.
             }
         }
 

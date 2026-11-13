@@ -38,8 +38,10 @@ public static class PlaybackSessionStore
                 process.Kill(entireProcessTree: true);
                 cleaned++;
             }
-            catch
+            catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception
+                                           or ArgumentException)
             {
+                // The process vanished or belongs to another session; it is not ours to kill.
             }
         }
 
@@ -136,6 +138,7 @@ public static class PlaybackSessionStore
         }
         catch (JsonException)
         {
+            // Not the current schema; the legacy bare-array shape is tried below.
         }
 
         try
@@ -143,7 +146,7 @@ public static class PlaybackSessionStore
             // Older builds wrote a bare array.
             return JsonSerializer.Deserialize<List<PlaybackSession>>(json, JsonOptions);
         }
-        catch
+        catch (Exception ex) when (ex is JsonException or NotSupportedException)
         {
             return null;
         }
@@ -157,8 +160,10 @@ public static class PlaybackSessionStore
             var file = new SessionFile(CurrentSchemaVersion, sessions.ToList());
             AtomicFile.WriteAllText(SessionFilePath, JsonSerializer.Serialize(file, JsonOptions));
         }
-        catch
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+                                       or JsonException or NotSupportedException)
         {
+            // The session file is a convenience; playback must not fail because it could not be written.
         }
     }
 
@@ -265,8 +270,10 @@ public static class PlaybackSessionStore
                 process.Kill(entireProcessTree: true);
                 cleaned++;
             }
-            catch
+            catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception
+                                           or ArgumentException)
             {
+                // Already exited, or not a process this account may kill.
             }
         }
 

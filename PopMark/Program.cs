@@ -370,8 +370,9 @@ internal static class Program
                 stdout.WriteLine(error);
                 stdout.Flush();
             }
-            catch
+            catch (Exception reportEx) when (reportEx is JsonException or NotSupportedException)
             {
+                // Reporting the failure is best effort; the exit code still reports it.
             }
 
             return 1;
@@ -384,8 +385,9 @@ internal static class Program
             {
                 stdout.Flush();
             }
-            catch
+            catch (IOException)
             {
+                // stdout is already gone; the process is exiting anyway.
             }
         }
     }
